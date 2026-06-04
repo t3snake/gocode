@@ -56,5 +56,5 @@ func main() {
 	fmt.Fprintln(os.Stderr, "Logs from your program will appear here!")
 
 	// TODO: Uncomment the line below to pass the first stage
-	// fmt.Print(resp.Choices[0].Message.Content)
+	fmt.Print(resp.Choices[0].Message.Content)
 }
