@@ -85,6 +85,7 @@ func main() {
 		for idx, tool_call := range tool_calls {
 			results[idx], err = ExecuteToolCall(tool_call)
 			if err != nil {
+				fmt.Fprintf(os.Stderr, "%s\n", err.Error())
 				continue
 			}
 			fmt.Println(results[idx])

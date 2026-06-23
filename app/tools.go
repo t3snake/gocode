@@ -30,9 +30,9 @@ func ExecuteToolCall(toolcall openai.ChatCompletionMessageToolCallUnion) (string
 	fnname := fncall.Function.Name
 
 	if fnname == ReadToolName {
-		path, ok := arg_map["path"]
+		path, ok := arg_map["file_path"]
 		if !ok {
-			return "", fmt.Errorf("Error: path argument not available in Read tool.\n")
+			return "", fmt.Errorf("Error: file_path argument not available in Read tool.\n")
 		}
 		pathstr, ok := path.(string)
 		if !ok {
