@@ -76,5 +76,18 @@ func main() {
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
 	fmt.Fprintln(os.Stderr, "Logs from your program will appear here!")
 
-	fmt.Print(resp.Choices[0].Message.Content)
+	choice := resp.Choices[0] //.Message.Content
+	fmt.Print(choice.Message.Content)
+
+	results := make([]string, len(choice.Message.ToolCalls))
+	if choice.FinishReason == "tool_calls" && len(choice.Message.ToolCalls) != 0 {
+		tool_calls := choice.Message.ToolCalls
+		for idx, tool_call := range tool_calls {
+			results[idx], err = ExecuteToolCall(tool_call)
+			if err != nil {
+				continue
+			}
+			fmt.Println(results[idx])
+		}
+	}
 }
