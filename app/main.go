@@ -69,9 +69,9 @@ func getToolList() []openai.ChatCompletionToolUnionParam {
 								"description": "path of the file to read",
 							},
 							"content": map[string]any{
-								"type": string,
-								"description": "The content to write to the file"
-							}
+								"type":        "string",
+								"description": "The content to write to the file",
+							},
 						},
 						"required": []string{"file_path", "content"},
 					},
