@@ -56,6 +56,29 @@ func getToolList() []openai.ChatCompletionToolUnionParam {
 				},
 			},
 		},
+		{
+			OfFunction: &openai.ChatCompletionFunctionToolParam{
+				Function: openai.FunctionDefinitionParam{
+					Name:        "Write",
+					Description: openai.String("Write content to a file"),
+					Parameters: openai.FunctionParameters{
+						"type": "object",
+						"properties": map[string]any{
+							"file_path": map[string]any{
+								"type":        "string",
+								"description": "path of the file to read",
+							},
+							"content": map[string]any{
+								"type": string,
+								"description": "The content to write to the file"
+							}
+						},
+						"required": []string{"file_path", "content"},
+					},
+					Strict: openai.Bool(true),
+				},
+			},
+		},
 	}
 }
 

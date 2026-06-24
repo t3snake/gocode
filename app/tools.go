@@ -9,7 +9,8 @@ import (
 )
 
 // Constants
-const ReadToolName = "Read"
+const ReadToolName = "ReadFile"
+const WriteToolName = "WriteFile"
 
 // Tool utils
 
@@ -45,6 +46,35 @@ func ExecuteToolCall(toolcall openai.ChatCompletionMessageToolCallUnion) (string
 		}
 
 		return content, nil
+	} else if fnname == WriteToolName {
+		// parse file_path
+
+		path, ok := arg_map["file_path"]
+		if !ok {
+			return "", fmt.Errorf("Error: file_path argument not available in Read tool.\n")
+		}
+		pathstr, ok := path.(string)
+		if !ok {
+			return "", fmt.Errorf("Error: path not of type string\n")
+		}
+
+		// parse content
+
+		content, ok := arg_map["content"]
+		if !ok {
+			return "", fmt.Errorf("Error: content argument not available in Write tool.\n")
+		}
+		contentstr, ok := content.(string)
+		if !ok {
+			return "", fmt.Errorf("Error: content not of type string\n")
+		}
+
+		err := write_file(pathstr, contentstr)
+		if err != nil {
+			return "", fmt.Errorf("Error while writinf file: ", err.Error())
+		}
+
+		return "write_file successful", nil
 	}
 
 	return "", fmt.Errorf("Error: unknown tool name %s\n", fnname)
@@ -60,4 +90,8 @@ func read_file(path string) (content string, err error) {
 
 	content = string(bytes[:])
 	return
+}
+
+func write_file(path, content string) (err error) {
+	return os.WriteFile(path, []byte(content), 0666)
 }
