@@ -59,7 +59,8 @@ func getToolList() []openai.ChatCompletionToolUnionParam {
 	}
 }
 
-func getUserMessageForPrompt(prompt string) openai.ChatCompletionMessageParamUnion {
+// Creates a ChatCompletion message with role "user" and prompt as content
+func createUserMessage(prompt string) openai.ChatCompletionMessageParamUnion {
 	return openai.ChatCompletionMessageParamUnion{
 		OfUser: &openai.ChatCompletionUserMessageParam{
 			Content: openai.ChatCompletionUserMessageParamContentUnion{
@@ -69,10 +70,19 @@ func getUserMessageForPrompt(prompt string) openai.ChatCompletionMessageParamUni
 	}
 }
 
-func getToolMessageForResult(tool_name, tool_result string) openai.ChatCompletionMessageParamUnion {
+// Creates a ChatCompletion message with role "assistant" and prompt_response as content
+func createAssistantMessage(response openai.ChatCompletionChoice) openai.ChatCompletionMessageParamUnion {
+	asst_msg := response.Message.ToAssistantMessageParam()
+	return openai.ChatCompletionMessageParamUnion{
+		OfAssistant: &asst_msg,
+	}
+}
+
+// Creates a ChatCompletion message with role "tool" and tool_result as content
+func createToolMessage(tool_id, tool_result string) openai.ChatCompletionMessageParamUnion {
 	return openai.ChatCompletionMessageParamUnion{
 		OfTool: &openai.ChatCompletionToolMessageParam{
-			ToolCallID: tool_name,
+			ToolCallID: tool_id,
 			Content: openai.ChatCompletionToolMessageParamContentUnion{
 				OfString: openai.String(tool_result),
 			},
@@ -87,7 +97,7 @@ func runAgentLoop(client openai.Client, prompt string) (exitcode int) {
 	msg_len := 1
 
 	// initial message with given prompt
-	messages[0] = getUserMessageForPrompt(prompt)
+	messages[0] = createUserMessage(prompt)
 
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
 	fmt.Fprintln(os.Stderr, "Logs will appear here!")
@@ -105,7 +115,7 @@ func runAgentLoop(client openai.Client, prompt string) (exitcode int) {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			error_msg := fmt.Sprintf("error: %v\n", err)
 
-			messages[msg_len] = getUserMessageForPrompt(error_msg)
+			messages[msg_len] = createUserMessage(error_msg)
 			msg_len++
 			continue
 		}
@@ -116,6 +126,9 @@ func runAgentLoop(client openai.Client, prompt string) (exitcode int) {
 
 		choice := resp.Choices[0] //.Message.Content
 		response_message := fmt.Sprint(choice.Message.Content)
+
+		// always add response to message array with assistant role
+		messages[msg_len] = createAssistantMessage(choice)
 
 		results := make([]string, len(choice.Message.ToolCalls))
 		if choice.FinishReason == "tool_calls" && len(choice.Message.ToolCalls) != 0 {
@@ -129,7 +142,7 @@ func runAgentLoop(client openai.Client, prompt string) (exitcode int) {
 
 				fmt.Fprintf(os.Stderr, "debug info: tool result\n", results[idx])
 
-				messages[msg_len] = getToolMessageForResult(tool_call.ID, results[idx])
+				messages[msg_len] = createToolMessage(tool_call.ID, results[idx])
 				msg_len++
 			}
 		} else {
