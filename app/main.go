@@ -35,6 +35,7 @@ func main() {
 	os.Exit(retcode)
 }
 
+// get tools registered to be advertised to the LLM
 func getToolList() []openai.ChatCompletionToolUnionParam {
 	return []openai.ChatCompletionToolUnionParam{
 		{
@@ -183,7 +184,8 @@ func runAgentLoop(client openai.Client, prompt string) (exitcode int) {
 					continue
 				}
 
-				fmt.Fprintf(os.Stderr, "debug info: tool result\n", results[idx])
+				fmt.Fprintf(os.Stderr, "===== debug info: tool info =====\nname: %s\nparams: %s\nresult: %s\n===== END =====\n",
+					tool_call.Function.Name, tool_call.Function.Arguments, results[idx])
 
 				messages[msg_len] = createToolMessage(tool_call.ID, results[idx])
 				msg_len++
