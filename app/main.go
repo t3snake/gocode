@@ -40,7 +40,7 @@ func getToolList() []openai.ChatCompletionToolUnionParam {
 		{
 			OfFunction: &openai.ChatCompletionFunctionToolParam{
 				Function: openai.FunctionDefinitionParam{
-					Name:        "Read",
+					Name:        ReadToolName,
 					Description: openai.String("Read and return contents of a file"),
 					Parameters: openai.FunctionParameters{
 						"type": "object",
@@ -59,7 +59,7 @@ func getToolList() []openai.ChatCompletionToolUnionParam {
 		{
 			OfFunction: &openai.ChatCompletionFunctionToolParam{
 				Function: openai.FunctionDefinitionParam{
-					Name:        "Write",
+					Name:        WriteToolName,
 					Description: openai.String("Write content to a file"),
 					Parameters: openai.FunctionParameters{
 						"type": "object",
