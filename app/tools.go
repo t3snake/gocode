@@ -90,7 +90,8 @@ func ExecuteToolCall(toolcall openai.ChatCompletionMessageToolCallUnion) (string
 
 		result, err := run_bash_cmd(commandstr)
 		if err != nil {
-			return "", err
+			// in case of bash, it is not error but just stderr output
+			return err.Error(), nil
 		}
 
 		return result, nil
