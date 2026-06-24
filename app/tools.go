@@ -120,8 +120,6 @@ func run_bash_cmd(command string) (stdout string, stderr error) {
 	cmd_and_args := strings.Split(command, " ")
 	cmd := exec.Command(cmd_and_args[0], cmd_and_args[1:]...)
 
-	fmt.Fprintf(os.Stderr, "debug info: bash tool - cmd: %s, args[0]: %s\n", cmd_and_args[0], cmd_and_args[1])
-
 	var out strings.Builder
 	var err_out strings.Builder
 	cmd.Stdout = &out
@@ -132,5 +130,9 @@ func run_bash_cmd(command string) (stdout string, stderr error) {
 		return "", err
 	}
 
-	return out.String(), fmt.Errorf(err_out.String())
+	stderr = nil
+	if len(err_out.String()) != 0 {
+		stderr = fmt.Errorf(err_out.String())
+	}
+	return out.String(), stderr
 }
