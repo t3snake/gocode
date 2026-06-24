@@ -122,6 +122,8 @@ func run_bash_cmd(command string) (stdout string, stderr error) {
 
 	var out strings.Builder
 	var err_out strings.Builder
+	cmd.Stdout = &out
+	cmd.Stderr = &err_out
 
 	_ = cmd.Run()
 
