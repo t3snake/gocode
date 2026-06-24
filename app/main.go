@@ -79,6 +79,25 @@ func getToolList() []openai.ChatCompletionToolUnionParam {
 				},
 			},
 		},
+		{
+			OfFunction: &openai.ChatCompletionFunctionToolParam{
+				Function: openai.FunctionDefinitionParam{
+					Name:        BashToolName,
+					Description: openai.String("Execute a shell command"),
+					Parameters: openai.FunctionParameters{
+						"type": "object",
+						"properties": map[string]any{
+							"command": map[string]any{
+								"type":        "string",
+								"description": "The command to execute",
+							},
+						},
+						"required": []string{"command"},
+					},
+					Strict: openai.Bool(true),
+				},
+			},
+		},
 	}
 }
 
