@@ -129,6 +129,7 @@ func runAgentLoop(client openai.Client, prompt string) (exitcode int) {
 
 		// always add response to message array with assistant role
 		messages[msg_len] = createAssistantMessage(choice)
+		msg_len++
 
 		results := make([]string, len(choice.Message.ToolCalls))
 		if choice.FinishReason == "tool_calls" && len(choice.Message.ToolCalls) != 0 {
