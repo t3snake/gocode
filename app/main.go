@@ -6,19 +6,31 @@ import (
 	"fmt"
 	"os"
 
+	// openai api to communicate with LLM
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
+
+	// bubble tea tui fwk
+	tea "charm.land/bubbletea/v2"
 )
 
-func main() {
-	var prompt string
-	flag.StringVar(&prompt, "p", "", "Prompt to send to LLM")
-	flag.Parse()
+type chat struct {
+	title        string
+	prompt       string
+	ghost_prompt string
+	output       string
+}
 
-	if prompt == "" {
-		panic("Prompt must not be empty")
+func initialModel() chat {
+	return chat{
+		title:        "Go Code by t3snake",
+		prompt:       "",
+		ghost_prompt: "Type to get started",
+		output:       "",
 	}
+}
 
+func getClient() openai.Client {
 	apiKey := os.Getenv("OPENROUTER_API_KEY")
 	baseUrl := os.Getenv("OPENROUTER_BASE_URL")
 	if baseUrl == "" {
@@ -28,11 +40,71 @@ func main() {
 	if apiKey == "" {
 		panic("Env variable OPENROUTER_API_KEY not found")
 	}
-
 	client := openai.NewClient(option.WithAPIKey(apiKey), option.WithBaseURL(baseUrl))
 
-	retcode := runAgentLoop(client, prompt)
-	os.Exit(retcode)
+	return client
+}
+
+func main() {
+	var cli_mode bool
+	flag.BoolVar(&cli_mode, "cli", false, "Run in cli mode with -p flag")
+
+	var prompt string
+	flag.StringVar(&prompt, "p", "", "Prompt to send to LLM")
+	flag.Parse()
+
+	if cli_mode {
+		if prompt == "" {
+			panic("Prompt must not be empty")
+		}
+
+		client := getClient()
+
+		retcode := runAgentLoop(client, prompt)
+		os.Exit(retcode)
+	}
+
+	// else TUI mode
+	p := tea.NewProgram(initialModel())
+	if _, err := p.Run(); err != nil {
+		fmt.Printf("Error %v", err)
+		os.Exit(1)
+	}
+}
+
+func (c chat) Init() tea.Cmd {
+	return nil
+}
+
+func (c chat) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyPressMsg:
+		switch msg.String() {
+		case "ctrl+c", "q":
+			return c, tea.Quit
+		case "enter", "space":
+			if len(c.prompt) == 0 {
+				return c, nil
+			}
+
+			client := getClient()
+			runAgentLoop(client, c.prompt)
+		}
+	}
+	return c, nil
+}
+
+func (c chat) View() tea.View {
+	s := fmt.Sprintf("%s\n\n", c.title)
+	if len(c.prompt) == 0 {
+		s += fmt.Sprintf("> %s\n\n", c.ghost_prompt)
+	} else {
+		s += fmt.Sprintf("> %s\n\n", c.prompt)
+	}
+
+	s += fmt.Sprintf("Output:\n%s\n\n", c.output)
+
+	return tea.NewView(s)
 }
 
 // get tools registered to be advertised to the LLM
@@ -148,7 +220,7 @@ func runAgentLoop(client openai.Client, prompt string) (exitcode int) {
 	for {
 		resp, err := client.Chat.Completions.New(context.Background(),
 			openai.ChatCompletionNewParams{
-				Model:    "anthropic/claude-haiku-4.5",
+				Model:    "qwen3.5:9b",
 				Messages: messages[:msg_len],
 				Tools:    getToolList(),
 			},
