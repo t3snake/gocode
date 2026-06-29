@@ -1,34 +1,29 @@
-[![progress-banner](https://backend.codecrafters.io/progress/claude-code/a4af081f-56d0-438a-aee8-cce3b343cb04)](https://app.codecrafters.io/users/t3snake?r=2qF)
+# GoCode
 
-This is a starting point for Go solutions to the
-["Build Your own Claude Code" Challenge](https://codecrafters.io/challenges/claude-code).
+Originally started as a solution for the test suite in ["Build Your own Claude Code" Challenge](https://codecrafters.io/challenges/claude-code) by [Codecrafters](https://codecrafters.io).
 
-Claude Code is an AI coding assistant that uses Large Language Models (LLMs) to
-understand code and perform actions through tool calls. In this challenge,
-you'll build your own Claude Code from scratch by implementing an LLM-powered
-coding assistant.
+Go Code is an AI coding assistant that uses Large Language Models (LLMs) to
+understand code and perform actions through tool calls.
 
-Along the way you'll learn about HTTP RESTful APIs, OpenAI-compatible tool
-calling, agent loop, and how to integrate multiple tools into an AI assistant.
+The entry point for your `gocode` implementation is in `src/main.go`.
 
-**Note**: If you're viewing this repo on GitHub, head over to
-[codecrafters.io](https://codecrafters.io) to try the challenge.
-
-# Passing the first stage
-
-The entry point for your `claude-code` implementation is in `app/main.go`. Study
-and uncomment the relevant code, and submit to pass the first stage:
-
-```sh
-codecrafters submit
+```
+Note: Optimized for local model. Tested with qwen3.5:9b model running through ollama Q4_K_M quantization on a `RTX 3070` with `8GB vram`
 ```
 
-# Stage 2 & beyond
+## Get Started
 
-Note: This section is for stages 2 and beyond.
+- Ensure you have `go (1.26)` installed locally.
+- Add 
 
-1. Ensure you have `go (1.26)` installed locally.
-2. Run `./your_program.sh` to run your program, which is implemented in
-   `app/main.go`.
-3. Run `codecrafters submit` to submit your solution to CodeCrafters. Test
-   output will be streamed to your terminal.
+### MacOS and linux
+
+- Run `./start_gocode.sh` to build and run `gocode`, which is implemented in
+   `src/main.go`.
+
+### All OS including Windows
+
+- Run `go run .\src\ -<optional_args>`
+
+- Use commandline argument `-p "<your prompt>"` to run agent loop for your prompt.
+- Use directly to use the TUI
