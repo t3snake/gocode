@@ -43,7 +43,7 @@ func ExecuteToolCall(toolcall openai.ChatCompletionMessageToolCallUnion) (string
 			return "", fmt.Errorf("Error: file_path not of type string\n")
 		}
 
-		content, err := read_file(pathstr)
+		content, err := readFile(pathstr)
 		if err != nil {
 			return "", fmt.Errorf("Error while reading file: %s\n", err.Error())
 		}
@@ -72,7 +72,7 @@ func ExecuteToolCall(toolcall openai.ChatCompletionMessageToolCallUnion) (string
 			return "", fmt.Errorf("Error: content not of type string\n")
 		}
 
-		err := write_file(pathstr, contentstr)
+		err := writeFile(pathstr, contentstr)
 		if err != nil {
 			return "", fmt.Errorf("Error while writinf file: ", err.Error())
 		}
@@ -88,7 +88,7 @@ func ExecuteToolCall(toolcall openai.ChatCompletionMessageToolCallUnion) (string
 			return "", fmt.Errorf("Error: command not of type string\n")
 		}
 
-		result, err := run_bash_cmd(commandstr)
+		result, err := runBashCommand(commandstr)
 		if err != nil {
 			// in case of bash, it is not error but just stderr output
 			return err.Error(), nil
@@ -100,9 +100,30 @@ func ExecuteToolCall(toolcall openai.ChatCompletionMessageToolCallUnion) (string
 	return "", fmt.Errorf("Error: unknown tool name %s\n", fnname)
 }
 
-// Built in tools
+// Built in tool functions and registrations
+func readFileRegistration() openai.ChatCompletionToolUnionParam {
+	return openai.ChatCompletionToolUnionParam{
+		OfFunction: &openai.ChatCompletionFunctionToolParam{
+			Function: openai.FunctionDefinitionParam{
+				Name:        ReadToolName,
+				Description: openai.String("Read and return contents of a file"),
+				Parameters: openai.FunctionParameters{
+					"type": "object",
+					"properties": map[string]any{
+						"file_path": map[string]any{
+							"type":        "string",
+							"description": "path of the file to read",
+						},
+					},
+					"required": []string{"file_path"},
+				},
+				Strict: openai.Bool(true),
+			},
+		},
+	}
+}
 
-func read_file(path string) (content string, err error) {
+func readFile(path string) (content string, err error) {
 	bytes, err := os.ReadFile(path)
 	if err != nil {
 		return "", err
@@ -112,11 +133,58 @@ func read_file(path string) (content string, err error) {
 	return
 }
 
-func write_file(path, content string) (err error) {
+func writeFileRegistration() openai.ChatCompletionToolUnionParam {
+	return openai.ChatCompletionToolUnionParam{
+		OfFunction: &openai.ChatCompletionFunctionToolParam{
+			Function: openai.FunctionDefinitionParam{
+				Name:        WriteToolName,
+				Description: openai.String("Write content to a file"),
+				Parameters: openai.FunctionParameters{
+					"type": "object",
+					"properties": map[string]any{
+						"file_path": map[string]any{
+							"type":        "string",
+							"description": "path of the file to read",
+						},
+						"content": map[string]any{
+							"type":        "string",
+							"description": "The content to write to the file",
+						},
+					},
+					"required": []string{"file_path", "content"},
+				},
+				Strict: openai.Bool(true),
+			},
+		},
+	}
+}
+
+func writeFile(path, content string) (err error) {
 	return os.WriteFile(path, []byte(content), 0666)
 }
 
-func run_bash_cmd(command string) (stdout string, stderr error) {
+func runBashRegistration() openai.ChatCompletionToolUnionParam {
+	return openai.ChatCompletionToolUnionParam{
+		OfFunction: &openai.ChatCompletionFunctionToolParam{
+			Function: openai.FunctionDefinitionParam{
+				Name:        BashToolName,
+				Description: openai.String("Execute a shell command"),
+				Parameters: openai.FunctionParameters{
+					"type": "object",
+					"properties": map[string]any{
+						"command": map[string]any{
+							"type":        "string",
+							"description": "The command to execute",
+						},
+					},
+					"required": []string{"command"},
+				},
+				Strict: openai.Bool(true),
+			},
+		},
+	}
+}
+func runBashCommand(command string) (stdout string, stderr error) {
 	cmd_and_args := strings.Split(command, " ")
 	cmd := exec.Command(cmd_and_args[0], cmd_and_args[1:]...)
 
