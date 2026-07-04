@@ -21,18 +21,21 @@ func StartTUI() {
 }
 
 type ChatOutput struct {
-	value  string
+	value string
 }
 
-
+func (co *ChatOutput) Write(p []byte) (n int, err error) {
+	co.value += string(p)
+	return len(p), nil
+}
 
 type ChatState struct {
 	title    string
 	prompt   textarea.Model
 	viewport viewport.Model
-	llm_out   *ChatOutput
-	llm_err   *ChatOutput
-	user_out   *ChatOutput
+	llm_out  *ChatOutput
+	llm_err  *ChatOutput
+	user_out *ChatOutput
 }
 
 func initialModel() ChatState {
@@ -60,8 +63,14 @@ func initialModel() ChatState {
 		title:    "Go Code by t3snake",
 		prompt:   ta,
 		viewport: vp,
-		output:   &ChatOutput{
-			n
+		llm_out: &ChatOutput{
+			value: "",
+		},
+		llm_err: &ChatOutput{
+			value: "",
+		},
+		user_out: &ChatOutput{
+			value: "",
 		},
 	}
 }
@@ -87,7 +96,11 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			client := getClient()
-			runAgentLoop(client, c.prompt.Value())
+
+			runAgentLoop(client, c.prompt.Value(), Writers{
+				out: c.llm_out,
+				err: c.llm_err,
+			})
 
 		default:
 			var cmd tea.Cmd
