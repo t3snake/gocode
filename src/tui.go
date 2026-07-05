@@ -13,10 +13,11 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-const USER_YELLOW = "#FFEBCC"
-const AGENT_BLUE = "#BFDDF0"
-const TERM_BG = "#B1D3B9"
-const CURSOR = "#C5B3D3"
+var CLR_USER_YELLOW = lipgloss.Color("#FFEBCC")
+var CLR_AGENT_BLUE = lipgloss.Color("#BFDDF0")
+var CLR_TERM_BG = lipgloss.Color("#B1D3B9")
+var CLR_CURSOR = lipgloss.Color("#C5B3D3")
+var CLR_BLACK_TEXT = lipgloss.Color("#000000")
 
 // Starts and runs a bubbletea TUI program
 func StartTUI() {
@@ -73,9 +74,9 @@ func promptLlm(prompt string) tea.Cmd {
 
 // Struct representing user and chat-agent/llm messages
 type Message struct {
-	role   int8 // 0 user, 1 llm
+	role   uint8 // 0 user, 1 llm
 	is_err bool
-	id     int    // unique identifier, currently only 256 messages possible
+	id     uint8  // unique identifier, currently only 256 messages possible
 	value  string // message
 }
 
@@ -90,6 +91,9 @@ type ChatState struct {
 
 	user_style  lipgloss.Style
 	agent_style lipgloss.Style
+
+	app_width  uint16
+	app_height uint16
 }
 
 func initialModel() ChatState {
@@ -104,11 +108,16 @@ func initialModel() ChatState {
 
 	st := ta.Styles()
 	st.Focused.CursorLine = lipgloss.NewStyle()
-	st.Cursor.Color = lipgloss.Color(CURSOR)
+	st.Cursor.Color = CLR_CURSOR
 	// st.Focused.Text = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF"))
 	st.Focused.Base = lipgloss.NewStyle().
-		Background(lipgloss.Color(USER_YELLOW)).
-		Foreground(lipgloss.Color("#FFFFFF"))
+		Padding(1).
+		MarginTop(2).
+		Background(CLR_USER_YELLOW).
+		Foreground(CLR_BLACK_TEXT)
+	st.Focused.Placeholder = lipgloss.NewStyle().
+		Background(CLR_USER_YELLOW).
+		Foreground(lipgloss.Color("#2c2d2d"))
 	ta.SetStyles(st)
 
 	ta.ShowLineNumbers = false
@@ -122,8 +131,8 @@ func initialModel() ChatState {
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 
-	us := lipgloss.NewStyle().Foreground(lipgloss.Color(USER_YELLOW))
-	as := lipgloss.NewStyle().Foreground(lipgloss.Color(AGENT_BLUE))
+	us := lipgloss.NewStyle().Background(CLR_USER_YELLOW)
+	as := lipgloss.NewStyle().Background(CLR_AGENT_BLUE)
 
 	return ChatState{
 		prompt:   ta,
@@ -135,6 +144,9 @@ func initialModel() ChatState {
 
 		user_style:  us,
 		agent_style: as,
+
+		app_width:  400,
+		app_height: 300,
 	}
 }
 
@@ -146,13 +158,27 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 
 	case tea.WindowSizeMsg:
+		c.app_height = uint16(msg.Height)
+		c.app_width = uint16(msg.Width)
+
 		c.prompt.SetWidth(msg.Width)
+
 		st := c.prompt.Styles()
-		st.Focused.Base = st.Focused.Base.Width(msg.Width)
+		st.Focused.Placeholder = lipgloss.NewStyle().
+			Background(CLR_USER_YELLOW).
+			Foreground(lipgloss.Color("#2c2d2d"))
+		st.Focused.Base = lipgloss.NewStyle().
+			Padding(1).
+			MarginTop(2).
+			Background(CLR_USER_YELLOW).
+			Foreground(CLR_BLACK_TEXT)
+		st.Focused.Text = lipgloss.NewStyle().
+			Background(CLR_USER_YELLOW).
+			Foreground(CLR_BLACK_TEXT)
 		c.prompt.SetStyles(st)
 
 		c.viewport.SetWidth(msg.Width)
-		c.viewport.SetHeight(msg.Height - c.prompt.Height())
+		c.viewport.SetHeight(msg.Height - c.prompt.Height() - 5)
 	case ChatResult:
 		var output string
 		if msg.is_err {
@@ -164,7 +190,7 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		c.is_loading = false
 		c.messages = append(c.messages, Message{
 			role:   1,
-			id:     len(c.messages),
+			id:     uint8(len(c.messages)),
 			value:  output,
 			is_err: msg.is_err,
 		})
@@ -191,7 +217,7 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			c.messages = append(c.messages,
 				Message{
 					role:  0,
-					id:    len(c.messages),
+					id:    uint8(len(c.messages)),
 					value: prompt,
 				},
 			)
@@ -223,6 +249,9 @@ func (c ChatState) View() tea.View {
 	}
 
 	v := tea.NewView(view + "\n" + c.prompt.View())
+	v.WindowTitle = "Go Code"
+	v.BackgroundColor = CLR_TERM_BG
+	v.AltScreen = true
 
 	cr := c.prompt.Cursor()
 	if cr != nil {
@@ -230,9 +259,6 @@ func (c ChatState) View() tea.View {
 	}
 
 	v.Cursor = cr
-	v.AltScreen = true
-	v.WindowTitle = "Go Code"
-	v.BackgroundColor = lipgloss.Color(TERM_BG)
 
 	return v
 }
