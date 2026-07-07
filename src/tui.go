@@ -13,13 +13,6 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-var CLR_PASTEL_YELLOW = lipgloss.Color("#FAEDCB")
-var CLR_PASTEL_BLUE = lipgloss.Color("#C6DEF1")
-var CLR_PASTEL_GREEN = lipgloss.Color("#C9E4DE")
-var CLR_PASTEL_PURPLE = lipgloss.Color("#DBCDF0")
-var CLR_PASTEL_ORANGE = lipgloss.Color("#F7D9C4")
-var CLR_BLACK = lipgloss.Color("#000000")
-
 // Starts and runs a bubbletea TUI program
 func StartTUI() {
 	p := tea.NewProgram(initialModel())
@@ -90,6 +83,7 @@ type ChatState struct {
 	is_loading bool
 	spinner    spinner.Model
 
+	theme       Theme
 	user_style  lipgloss.Style
 	agent_style lipgloss.Style
 
@@ -98,26 +92,23 @@ type ChatState struct {
 }
 
 func initialModel() ChatState {
+	theme := catpuccinMacchiatoTheme
+
 	ta := textarea.New()
 	ta.Placeholder = "Type to get started"
 	ta.SetVirtualCursor(false)
 	ta.Focus()
 
-	// ta.Prompt = lipgloss.NewStyle().Foreground(CLR_BLACK_TEXT).Render("| ")
 	ta.SetWidth(30)
 	ta.SetHeight(5)
 
-	ta.SetStyles(textarea.DefaultLightStyles())
+	ta.SetStyles(textarea.DefaultDarkStyles())
 	st := ta.Styles()
 
-	st.Cursor.Color = CLR_PASTEL_PURPLE
+	st.Cursor.Color = theme.Cursor
 	st.Focused.CursorLine = lipgloss.NewStyle()
-	// Background(CLR_USER_YELLOW)
 	st.Focused.Placeholder = lipgloss.NewStyle().
-		// Background(CLR_USER_YELLOW).
-		Foreground(lipgloss.Color("#2c2d2d"))
-	// st.Focused.Text = lipgloss.NewStyle().
-	// 	Background(CLR_USER_YELLOW)
+		Foreground(Color("#c6a0f6"))
 
 	ta.SetStyles(st)
 
@@ -130,10 +121,10 @@ func initialModel() ChatState {
 
 	s := spinner.New()
 	s.Spinner = spinner.Points
-	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+	s.Style = lipgloss.NewStyle().Foreground(Color(CTPC_RED))
 
-	us := lipgloss.NewStyle().Background(CLR_PASTEL_YELLOW).MarginLeft(5)
-	as := lipgloss.NewStyle().Background(CLR_PASTEL_BLUE).MarginRight(5)
+	us := lipgloss.NewStyle().Background(theme.UserChatBackground).MarginLeft(5).MarginBottom(1)
+	as := lipgloss.NewStyle().Background(theme.AgentChatBackground).MarginRight(5).MarginBottom(1)
 
 	return ChatState{
 		prompt:   ta,
@@ -143,6 +134,7 @@ func initialModel() ChatState {
 		is_loading: false,
 		spinner:    s,
 
+		theme:       theme,
 		user_style:  us,
 		agent_style: as,
 
@@ -248,14 +240,14 @@ func (c ChatState) View() tea.View {
 		Width(int(c.app_width)).
 		Height(7).
 		BorderStyle(lipgloss.NormalBorder()).
-		// PaddingTop(1).PaddingBottom(1).
+		BorderForeground(c.theme.ActiveBorder).
 		MarginTop(1).MarginBottom(1)
 
 	v := tea.NewView(view + "\n" + chatBoxStyle.Render(c.prompt.View()))
 
 	v.WindowTitle = "Go Code"
-	v.BackgroundColor = CLR_PASTEL_GREEN
-	v.ForegroundColor = CLR_BLACK
+	v.BackgroundColor = c.theme.TerminalBackground
+	v.ForegroundColor = c.theme.Text
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeCellMotion
 
@@ -278,7 +270,7 @@ func renderChatMessages(c ChatState) (content string) {
 			prefix := ""
 			if msg.is_err {
 				prefix = lipgloss.NewStyle().
-					Foreground(lipgloss.Color("205")).
+					Foreground(Color(CTPC_RED)).
 					Render("Error: ")
 			}
 			content += c.user_style.
