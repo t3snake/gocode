@@ -5,7 +5,7 @@ import (
 	"os"
 
 	// bubble tea tui fwk
-	"charm.land/bubbles/v2/cursor"
+
 	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
@@ -13,11 +13,12 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-var CLR_USER_YELLOW = lipgloss.Color("#FFEBCC")
-var CLR_AGENT_BLUE = lipgloss.Color("#BFDDF0")
-var CLR_TERM_BG = lipgloss.Color("#B1D3B9")
-var CLR_CURSOR = lipgloss.Color("#C5B3D3")
-var CLR_BLACK_TEXT = lipgloss.Color("#000000")
+var CLR_PASTEL_YELLOW = lipgloss.Color("#FAEDCB")
+var CLR_PASTEL_BLUE = lipgloss.Color("#C6DEF1")
+var CLR_PASTEL_GREEN = lipgloss.Color("#C9E4DE")
+var CLR_PASTEL_PURPLE = lipgloss.Color("#DBCDF0")
+var CLR_PASTEL_ORANGE = lipgloss.Color("#F7D9C4")
+var CLR_BLACK = lipgloss.Color("#000000")
 
 // Starts and runs a bubbletea TUI program
 func StartTUI() {
@@ -102,22 +103,22 @@ func initialModel() ChatState {
 	ta.SetVirtualCursor(false)
 	ta.Focus()
 
-	ta.Prompt = "| "
+	// ta.Prompt = lipgloss.NewStyle().Foreground(CLR_BLACK_TEXT).Render("| ")
 	ta.SetWidth(30)
 	ta.SetHeight(5)
 
+	ta.SetStyles(textarea.DefaultLightStyles())
 	st := ta.Styles()
+
+	st.Cursor.Color = CLR_PASTEL_PURPLE
 	st.Focused.CursorLine = lipgloss.NewStyle()
-	st.Cursor.Color = CLR_CURSOR
-	// st.Focused.Text = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF"))
-	st.Focused.Base = lipgloss.NewStyle().
-		Padding(1).
-		MarginTop(2).
-		Background(CLR_USER_YELLOW).
-		Foreground(CLR_BLACK_TEXT)
+	// Background(CLR_USER_YELLOW)
 	st.Focused.Placeholder = lipgloss.NewStyle().
-		Background(CLR_USER_YELLOW).
+		// Background(CLR_USER_YELLOW).
 		Foreground(lipgloss.Color("#2c2d2d"))
+	// st.Focused.Text = lipgloss.NewStyle().
+	// 	Background(CLR_USER_YELLOW)
+
 	ta.SetStyles(st)
 
 	ta.ShowLineNumbers = false
@@ -128,11 +129,11 @@ func initialModel() ChatState {
 	vp.KeyMap.Right.SetEnabled(false)
 
 	s := spinner.New()
-	s.Spinner = spinner.Dot
+	s.Spinner = spinner.Points
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 
-	us := lipgloss.NewStyle().Background(CLR_USER_YELLOW)
-	as := lipgloss.NewStyle().Background(CLR_AGENT_BLUE)
+	us := lipgloss.NewStyle().Background(CLR_PASTEL_YELLOW).MarginLeft(5)
+	as := lipgloss.NewStyle().Background(CLR_PASTEL_BLUE).MarginRight(5)
 
 	return ChatState{
 		prompt:   ta,
@@ -151,34 +152,24 @@ func initialModel() ChatState {
 }
 
 func (c ChatState) Init() tea.Cmd {
-	return nil
+	return textarea.Blink
 }
 
 func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmds []tea.Cmd
+	var cmd tea.Cmd
+
 	switch msg := msg.(type) {
 
 	case tea.WindowSizeMsg:
 		c.app_height = uint16(msg.Height)
 		c.app_width = uint16(msg.Width)
 
-		c.prompt.SetWidth(msg.Width)
+		c.prompt.SetWidth(msg.Width - 1)
 
-		st := c.prompt.Styles()
-		st.Focused.Placeholder = lipgloss.NewStyle().
-			Background(CLR_USER_YELLOW).
-			Foreground(lipgloss.Color("#2c2d2d"))
-		st.Focused.Base = lipgloss.NewStyle().
-			Padding(1).
-			MarginTop(2).
-			Background(CLR_USER_YELLOW).
-			Foreground(CLR_BLACK_TEXT)
-		st.Focused.Text = lipgloss.NewStyle().
-			Background(CLR_USER_YELLOW).
-			Foreground(CLR_BLACK_TEXT)
-		c.prompt.SetStyles(st)
-
-		c.viewport.SetWidth(msg.Width)
+		c.viewport.SetWidth(msg.Width - 1)
 		c.viewport.SetHeight(msg.Height - c.prompt.Height() - 5)
+		c.viewport.Style = lipgloss.NewStyle().Align(lipgloss.Center)
 	case ChatResult:
 		var output string
 		if msg.is_err {
@@ -222,43 +213,83 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				},
 			)
 
-			return c, promptLlm(prompt)
+			return c, tea.Batch(c.spinner.Tick, promptLlm(prompt))
 
 		default:
-			var cmd tea.Cmd
-			c.prompt, cmd = c.prompt.Update(msg)
-			c.spinner, cmd = c.spinner.Update(msg)
-			return c, cmd
+			if !c.prompt.Focused() {
+				cmd = c.prompt.Focus()
+				cmds = append(cmds, cmd)
+			}
 		}
 
-	case cursor.BlinkMsg:
-		var cmd tea.Cmd
-		c.prompt, cmd = c.prompt.Update(msg)
-		return c, cmd
+	case spinner.TickMsg:
+		c.spinner, cmd = c.spinner.Update(msg)
+		cmds = append(cmds, cmd)
 
 	}
 
-	return c, nil
+	c.prompt, cmd = c.prompt.Update(msg)
+	cmds = append(cmds, cmd)
+	c.viewport, cmd = c.viewport.Update(msg)
+	cmds = append(cmds, cmd)
+	return c, tea.Batch(cmds...)
 }
 
 func (c ChatState) View() tea.View {
-	view := c.viewport.View()
+	content := renderChatMessages(c)
+	c.viewport.SetContent(content)
+	view := c.viewport.View() + "\n"
 
 	if c.is_loading {
-		view += "\n" + c.spinner.View()
+		view += c.spinner.View()
 	}
 
-	v := tea.NewView(view + "\n" + c.prompt.View())
+	chatBoxStyle := lipgloss.NewStyle().
+		Width(int(c.app_width)).
+		Height(7).
+		BorderStyle(lipgloss.NormalBorder()).
+		// PaddingTop(1).PaddingBottom(1).
+		MarginTop(1).MarginBottom(1)
+
+	v := tea.NewView(view + "\n" + chatBoxStyle.Render(c.prompt.View()))
+
 	v.WindowTitle = "Go Code"
-	v.BackgroundColor = CLR_TERM_BG
+	v.BackgroundColor = CLR_PASTEL_GREEN
+	v.ForegroundColor = CLR_BLACK
 	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
 
 	cr := c.prompt.Cursor()
 	if cr != nil {
-		cr.Y += lipgloss.Height(view)
+		cr.Y += lipgloss.Height(view) + 2
+		cr.X += 1
 	}
 
 	v.Cursor = cr
 
 	return v
+}
+
+func renderChatMessages(c ChatState) (content string) {
+	content = ""
+	msg_width := c.viewport.Width() - 5
+	for _, msg := range c.messages {
+		if msg.role == 0 {
+			prefix := ""
+			if msg.is_err {
+				prefix = lipgloss.NewStyle().
+					Foreground(lipgloss.Color("205")).
+					Render("Error: ")
+			}
+			content += c.user_style.
+				Width(msg_width).
+				Render(prefix+msg.value) + "\n"
+		} else if msg.role == 1 {
+			content += c.agent_style.
+				Width(msg_width).
+				Render(msg.value) + "\n"
+		}
+	}
+
+	return content
 }
