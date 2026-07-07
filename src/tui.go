@@ -123,8 +123,8 @@ func initialModel() ChatState {
 	s.Spinner = spinner.Points
 	s.Style = lipgloss.NewStyle().Foreground(Color(CTPC_RED))
 
-	us := lipgloss.NewStyle().Background(theme.UserChatBackground).MarginLeft(5).MarginBottom(1)
-	as := lipgloss.NewStyle().Background(theme.AgentChatBackground).MarginRight(5).MarginBottom(1)
+	us := lipgloss.NewStyle().Background(theme.UserChatBackground).MarginLeft(5).MarginBottom(1).Padding(1)
+	as := lipgloss.NewStyle().Background(theme.AgentChatBackground).MarginRight(5).MarginBottom(1).Padding(1)
 
 	return ChatState{
 		prompt:   ta,
@@ -161,7 +161,8 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		c.viewport.SetWidth(msg.Width - 1)
 		c.viewport.SetHeight(msg.Height - c.prompt.Height() - 5)
-		c.viewport.Style = lipgloss.NewStyle().Align(lipgloss.Center)
+		c.viewport.Style = lipgloss.NewStyle().Padding(1).Align(lipgloss.Center)
+
 	case ChatResult:
 		var output string
 		if msg.is_err {
@@ -177,6 +178,9 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			value:  output,
 			is_err: msg.is_err,
 		})
+
+		content := renderChatMessages(c)
+		c.viewport.SetContent(content)
 
 		return c, nil
 
@@ -205,6 +209,9 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				},
 			)
 
+			content := renderChatMessages(c)
+			c.viewport.SetContent(content)
+
 			return c, tea.Batch(c.spinner.Tick, promptLlm(prompt))
 
 		default:
@@ -220,20 +227,20 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	}
 
-	c.prompt, cmd = c.prompt.Update(msg)
-	cmds = append(cmds, cmd)
 	c.viewport, cmd = c.viewport.Update(msg)
 	cmds = append(cmds, cmd)
+
+	c.prompt, cmd = c.prompt.Update(msg)
+	cmds = append(cmds, cmd)
+
 	return c, tea.Batch(cmds...)
 }
 
 func (c ChatState) View() tea.View {
-	content := renderChatMessages(c)
-	c.viewport.SetContent(content)
 	view := c.viewport.View() + "\n"
 
 	if c.is_loading {
-		view += c.spinner.View()
+		view += fmt.Sprintf("Thinking %s", c.spinner.View())
 	}
 
 	chatBoxStyle := lipgloss.NewStyle().
@@ -241,7 +248,7 @@ func (c ChatState) View() tea.View {
 		Height(7).
 		BorderStyle(lipgloss.NormalBorder()).
 		BorderForeground(c.theme.ActiveBorder).
-		MarginTop(1).MarginBottom(1)
+		MarginBottom(1)
 
 	v := tea.NewView(view + "\n" + chatBoxStyle.Render(c.prompt.View()))
 
