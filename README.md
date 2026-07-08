@@ -1,11 +1,11 @@
 # GoCode
 
-Originally started as a solution for the test suite in ["Build Your own Claude Code" Challenge](https://codecrafters.io/challenges/claude-code) by [Codecrafters](https://codecrafters.io).
-
 Go Code is an AI coding assistant that uses Large Language Models (LLMs) to
 understand code and perform actions through tool calls.
 
 The entry point for your `gocode` implementation is in `src/main.go`.
+
+Originally started as a solution for the challenge ["Build Your own Claude Code"](https://codecrafters.io/challenges/claude-code) by [Codecrafters](https://codecrafters.io).
 
 ```
 Note: Optimized for local model. Tested with qwen3.5:9b model running through ollama Q4_K_M quantization on a `RTX 3070` with `8GB vram`
@@ -26,4 +26,4 @@ Note: Optimized for local model. Tested with qwen3.5:9b model running through ol
 - Run `go run .\src\ -<optional_args>`
 
 - Use commandline argument `-p "<your prompt>"` to run agent loop for your prompt.
-- Use directly to use the TUI
+- Use without params to use the TUI
