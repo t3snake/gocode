@@ -33,7 +33,8 @@ func ExecuteToolCall(toolcall openai.ChatCompletionMessageToolCallUnion) (string
 
 	fnname := fncall.Function.Name
 
-	if fnname == ReadToolName {
+	switch fnname {
+	case ReadToolName:
 		path, ok := arg_map["file_path"]
 		if !ok {
 			return "", fmt.Errorf("Error: file_path argument not available in %s tool.\n", fnname)
@@ -49,7 +50,8 @@ func ExecuteToolCall(toolcall openai.ChatCompletionMessageToolCallUnion) (string
 		}
 
 		return content, nil
-	} else if fnname == WriteToolName {
+
+	case WriteToolName:
 		// parse file_path
 
 		path, ok := arg_map["file_path"]
@@ -74,11 +76,12 @@ func ExecuteToolCall(toolcall openai.ChatCompletionMessageToolCallUnion) (string
 
 		err := writeFile(pathstr, contentstr)
 		if err != nil {
-			return "", fmt.Errorf("Error while writinf file: ", err.Error())
+			return "", fmt.Errorf("Error while writing file: %s", err.Error())
 		}
 
 		return "write_file successful", nil
-	} else if fnname == BashToolName {
+
+	case BashToolName:
 		command, ok := arg_map["command"]
 		if !ok {
 			return "", fmt.Errorf("Error: command argument not available in %s tool.\n", fnname)
@@ -200,7 +203,7 @@ func runBashCommand(command string) (stdout string, stderr error) {
 
 	stderr = nil
 	if len(err_out.String()) != 0 {
-		stderr = fmt.Errorf(err_out.String())
+		stderr = fmt.Errorf("%s", err_out.String())
 	}
 	return out.String(), stderr
 }

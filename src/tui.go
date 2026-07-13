@@ -13,9 +13,37 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
+type Llm2Tui struct {
+	// for tool call permission to tui
+
+	is_tool_call bool   // Reports whether LLM is requesting a tool call
+	tool_name    string // tool name, only guaranteed if [Llm2Tui.is_tool_call] is true
+
+	// TODO(t3snake): parse and make map[string]string
+	params string // tool params, only guaranteed if [Llm2Tui.is_tool_call] is true
+
+	// stream thinking/content
+
+	is_chunk      bool // Reports whether a chunk was streamed
+	is_last       bool // Reports whether the last chunk was just streamed. Only valid if [Llm2Tui.is_chunk] is true.
+	chunk_content string
+
+	token_spent int // Reports how many tokens were spent so far in the agent loop.
+
+}
+
+type Tui2Llm struct {
+	// allow or reject?
+	is_allowed        bool   // Reports whether user allowed the tool use, either through always allow or setting allow.
+	adjustment_prompt string // only used to change course, if [Tui2Llm.is_allowed] is false
+}
+
 // Starts and runs a bubbletea TUI program
 func StartTUI() {
-	p := tea.NewProgram(initialModel())
+	tui2llm := make(chan Tui2Llm)
+	llm2tui := make(chan Llm2Tui)
+
+	p := tea.NewProgram(initialModel(llm2tui, tui2llm))
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error %v", err)
 		os.Exit(1)
@@ -41,8 +69,12 @@ type ChatResult struct {
 	is_err bool
 }
 
+type ChatStream struct {
+	llm_msg Llm2Tui
+}
+
 // tea.Cmd can only take empty params so return a function with empty params
-func promptLlm(prompt string) tea.Cmd {
+func promptLlm(prompt string, tui2llm chan Tui2Llm, llm2tui chan Llm2Tui) tea.Cmd {
 	// This function runs as a goroutine (handled by bubbletea)
 	// The return is any type, we have to intercept our type in Update function
 	return func() tea.Msg {
@@ -54,13 +86,21 @@ func promptLlm(prompt string) tea.Cmd {
 		retcode := runAgentLoop(client, prompt, Writers{
 			out: &llm_out,
 			err: &llm_err,
-		})
+		}, llm2tui, tui2llm)
 
 		return ChatResult{
 			out:    llm_out.value,
 			err:    llm_err.value,
 			is_err: (retcode != 0),
 		}
+	}
+}
+
+func listenLlmStream(llm2tui chan Llm2Tui) tea.Cmd {
+	return func() tea.Msg {
+		stream_chunk := <-llm2tui
+
+		return ChatStream{llm_msg: stream_chunk}
 	}
 }
 
@@ -76,22 +116,38 @@ type Message struct {
 
 // TUI main state
 type ChatState struct {
+	// window dimensions
+
+	app_width  uint16
+	app_height uint16
+
+	// reusable bubbles
+
 	prompt   textarea.Model
-	messages []Message
 	viewport viewport.Model
 
+	// messages (history) and currently streaming message
+
+	messages        []Message
+	current_message Message
+	token_spend     int
+
+	// loading state
 	is_loading bool
 	spinner    spinner.Model
+
+	// Theme related
 
 	theme       Theme
 	user_style  lipgloss.Style
 	agent_style lipgloss.Style
 
-	app_width  uint16
-	app_height uint16
+	// Channel for communication between TUI and LLM goroutines. For streaming and toolcall UX
+	tui2llm chan Tui2Llm
+	llm2tui chan Llm2Tui
 }
 
-func initialModel() ChatState {
+func initialModel(llm2tui chan Llm2Tui, tui2llm chan Tui2Llm) ChatState {
 	theme := catpuccinMacchiatoTheme
 
 	ta := textarea.New()
@@ -127,9 +183,19 @@ func initialModel() ChatState {
 	as := lipgloss.NewStyle().Background(theme.AgentChatBackground).MarginRight(5).MarginBottom(1).Padding(1)
 
 	return ChatState{
+		app_width:  400,
+		app_height: 300,
+
 		prompt:   ta,
 		viewport: vp,
+
 		messages: []Message{},
+		current_message: Message{
+			role:   1,
+			is_err: false,
+			id:     5,
+			value:  "",
+		},
 
 		is_loading: false,
 		spinner:    s,
@@ -138,8 +204,8 @@ func initialModel() ChatState {
 		user_style:  us,
 		agent_style: as,
 
-		app_width:  400,
-		app_height: 300,
+		llm2tui: llm2tui,
+		tui2llm: tui2llm,
 	}
 }
 
@@ -162,6 +228,25 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		c.viewport.SetWidth(msg.Width - 1)
 		c.viewport.SetHeight(msg.Height - c.prompt.Height() - 5)
 		c.viewport.Style = lipgloss.NewStyle().Padding(1).Align(lipgloss.Center)
+
+	case ChatStream:
+		if msg.llm_msg.is_chunk {
+			c.current_message = Message{
+				role:  1,
+				id:    uint8(len(c.messages)),
+				value: c.current_message.value + msg.llm_msg.chunk_content,
+			}
+		}
+
+		if msg.llm_msg.is_tool_call {
+			// TODO(t3snake): implement tool call user interaction allow-reject
+			c.tui2llm <- Tui2Llm{
+				is_allowed:        true, // currently hardcoding to true, ideally have a simple button selection
+				adjustment_prompt: "",   // UX?
+			}
+		}
+
+		return c, listenLlmStream(c.llm2tui)
 
 	case ChatResult:
 		var output string
@@ -212,7 +297,11 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			content := renderChatMessages(c)
 			c.viewport.SetContent(content)
 
-			return c, tea.Batch(c.spinner.Tick, promptLlm(prompt))
+			return c, tea.Batch(
+				c.spinner.Tick,
+				promptLlm(prompt, c.tui2llm, c.llm2tui),
+				listenLlmStream(c.llm2tui),
+			)
 
 		default:
 			if !c.prompt.Focused() {
@@ -273,7 +362,8 @@ func renderChatMessages(c ChatState) (content string) {
 	content = ""
 	msg_width := c.viewport.Width() - 5
 	for _, msg := range c.messages {
-		if msg.role == 0 {
+		switch msg.role {
+		case 0:
 			prefix := ""
 			if msg.is_err {
 				prefix = lipgloss.NewStyle().
@@ -283,7 +373,7 @@ func renderChatMessages(c ChatState) (content string) {
 			content += c.user_style.
 				Width(msg_width).
 				Render(prefix+msg.value) + "\n"
-		} else if msg.role == 1 {
+		case 1:
 			content += c.agent_style.
 				Width(msg_width).
 				Render(msg.value) + "\n"

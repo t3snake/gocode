@@ -16,41 +16,83 @@ type Writers struct {
 	err io.Writer
 }
 
-func runAgentLoop(client openai.Client, prompt string, writers Writers) (exitcode int) {
+func runAgentLoop(client openai.Client, prompt string, writers Writers, llm2tui chan Llm2Tui, tui2llm chan Tui2Llm) (exitcode int) {
+	var err error
+
 	// messages array that maintains chat history
 	messages := make([]openai.ChatCompletionMessageParamUnion, 100)
-
 	msg_len := 1
 
 	// initial message with given prompt
 	messages[0] = createUserMessage(prompt)
 
-	// You can use print statements as follows for debugging, they'll be visible when running tests.
-	fmt.Fprintln(writers.err, "Logs will appear here!")
-
+	// fmt.Fprintln(writers.err, "Logs will appear here!")
 	for {
-		resp, err := client.Chat.Completions.New(context.Background(),
+		stream := client.Chat.Completions.NewStreaming(context.Background(),
 			openai.ChatCompletionNewParams{
-				Model:    "qwen3.5:9b",
-				Messages: messages[:msg_len],
-				Tools:    registerTools(),
+				Model:         "Qwen3.6-35B-A3B-UD-IQ4_XS.gguf",
+				Messages:      messages[:msg_len],
+				Tools:         registerTools(),
+				StreamOptions: openai.ChatCompletionStreamOptionsParam{},
 			},
+			option.WithMaxRetries(2),
 		)
 
-		if err != nil {
-			fmt.Fprintf(writers.err, "error: %v\n", err)
-			error_msg := fmt.Sprintf("error: %v\n", err)
+		acc := openai.ChatCompletionAccumulator{}
 
-			messages[msg_len] = createUserMessage(error_msg)
-			msg_len++
-			continue
+		for stream.Next() {
+			chunk := stream.Current()
+
+			acc.AddChunk(chunk)
+
+			// check if streaming just finished with this chunk
+			if content, ok := acc.JustFinishedContent(); ok {
+				fmt.Fprintf(writers.out, "%s", content)
+				llm2tui <- Llm2Tui{
+					is_tool_call: false,
+					tool_name:    "",
+					params:       "",
+
+					is_chunk:      true,
+					is_last:       true,
+					chunk_content: chunk.Choices[0].Delta.Content,
+
+					token_spent: int(acc.Usage.TotalTokens),
+				}
+			}
+
+			if tool, ok := acc.JustFinishedToolCall(); ok {
+				fmt.Fprintf(writers.out, "%s - (%s)", tool.Name, tool.Arguments)
+			}
+
+			if refusal, ok := acc.JustFinishedRefusal(); ok {
+				fmt.Fprintf(writers.err, "Refusal (LLM): %s", refusal)
+				return 1
+			}
+
+			llm2tui <- Llm2Tui{
+				is_tool_call: false,
+				tool_name:    "",
+				params:       "",
+
+				is_chunk:      true,
+				is_last:       false,
+				chunk_content: chunk.Choices[0].Delta.Content,
+
+				token_spent: int(acc.Usage.TotalTokens),
+			}
 		}
 
-		if len(resp.Choices) == 0 {
+		if err := stream.Err(); err != nil {
+			fmt.Fprintf(writers.err, "error: %v\n", err)
+			return 1
+		}
+
+		if len(acc.Choices) == 0 {
 			panic("No choices in response")
 		}
 
-		choice := resp.Choices[0] //.Message.Content
+		choice := acc.Choices[0] //.Message.Content
 		response_message := fmt.Sprint(choice.Message.Content)
 
 		// always add response to message array with assistant role
@@ -61,6 +103,27 @@ func runAgentLoop(client openai.Client, prompt string, writers Writers) (exitcod
 		if choice.FinishReason == "tool_calls" && len(choice.Message.ToolCalls) != 0 {
 			tool_calls := choice.Message.ToolCalls
 			for idx, tool_call := range tool_calls {
+				// TODO should be blocked until user gives permission
+				llm2tui <- Llm2Tui{
+					is_tool_call: true,
+					tool_name:    tool_call.AsFunction().Function.Name,
+					params:       tool_call.AsFunction().Function.Arguments,
+
+					is_chunk:      false,
+					is_last:       false,
+					chunk_content: "",
+
+					token_spent: int(acc.Usage.TotalTokens),
+				}
+
+				user_action := <-tui2llm
+
+				if !user_action.is_allowed {
+					// TODO send back to llm or return ?
+					fmt.Fprintf(writers.err, "User cancelled tool call.")
+					return 1
+				}
+
 				results[idx], err = ExecuteToolCall(tool_call)
 				if err != nil {
 					fmt.Fprintf(writers.err, "%s\n", err.Error())
@@ -86,11 +149,12 @@ func getClient() openai.Client {
 	apiKey := os.Getenv("OPENROUTER_API_KEY")
 	baseUrl := os.Getenv("OPENROUTER_BASE_URL")
 	if baseUrl == "" {
-		baseUrl = "https://openrouter.ai/api/v1"
+		baseUrl = "http://localhost:3434/v1"
 	}
 
 	if apiKey == "" {
-		panic("Env variable OPENROUTER_API_KEY not found")
+		apiKey = ""
+		// panic("Env variable OPENROUTER_API_KEY not found")
 	}
 	client := openai.NewClient(option.WithAPIKey(apiKey), option.WithBaseURL(baseUrl))
 

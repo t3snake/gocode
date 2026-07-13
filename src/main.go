@@ -28,7 +28,7 @@ func main() {
 		retcode := runAgentLoop(client, prompt, Writers{
 			os.Stdout,
 			os.Stderr,
-		})
+		}, nil, nil)
 
 		os.Exit(retcode)
 	}
