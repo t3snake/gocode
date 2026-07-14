@@ -73,8 +73,9 @@ type ChatStream struct {
 	llm_msg Llm2Tui
 }
 
-// tea.Cmd can only take empty params so return a function with empty params
+// Runs agent loop using openai chat completion API
 func promptLlm(prompt string, tui2llm chan Tui2Llm, llm2tui chan Llm2Tui) tea.Cmd {
+	// tea.Cmd can only take fn with empty params so return a function with empty params and use closure
 	// This function runs as a goroutine (handled by bubbletea)
 	// The return is any type, we have to intercept our type in Update function
 	return func() tea.Msg {
@@ -230,11 +231,19 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		c.viewport.Style = lipgloss.NewStyle().Padding(1).Align(lipgloss.Center)
 
 	case ChatStream:
+		is_last_chunk := false
+
 		if msg.llm_msg.is_chunk {
 			c.current_message = Message{
 				role:  1,
 				id:    uint8(len(c.messages)),
 				value: c.current_message.value + msg.llm_msg.chunk_content,
+			}
+
+			if msg.llm_msg.is_last {
+				is_last_chunk = true
+				c.messages = append(c.messages, c.current_message)
+				c.current_message.value = ""
 			}
 		}
 
@@ -246,7 +255,16 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		return c, listenLlmStream(c.llm2tui)
+		if is_last_chunk {
+			cmd = nil
+		} else {
+			cmd = listenLlmStream(c.llm2tui)
+		}
+
+		content := renderChatMessages(c)
+		c.viewport.SetContent(content)
+
+		return c, cmd
 
 	case ChatResult:
 		var output string
@@ -363,7 +381,7 @@ func renderChatMessages(c ChatState) (content string) {
 	msg_width := c.viewport.Width() - 5
 	for _, msg := range c.messages {
 		switch msg.role {
-		case 0:
+		case 0: // user message
 			prefix := ""
 			if msg.is_err {
 				prefix = lipgloss.NewStyle().
@@ -373,11 +391,18 @@ func renderChatMessages(c ChatState) (content string) {
 			content += c.user_style.
 				Width(msg_width).
 				Render(prefix+msg.value) + "\n"
-		case 1:
+		case 1: // agent message
 			content += c.agent_style.
 				Width(msg_width).
 				Render(msg.value) + "\n"
 		}
+	}
+
+	// render currently streaming message
+	if len(c.current_message.value) != 0 {
+		content += c.agent_style.
+			Width(msg_width).
+			Render(c.current_message.value) + "\n"
 	}
 
 	return content

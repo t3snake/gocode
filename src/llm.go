@@ -59,6 +59,7 @@ func runAgentLoop(client openai.Client, prompt string, writers Writers, llm2tui 
 
 					token_spent: int(acc.Usage.TotalTokens),
 				}
+				continue
 			}
 
 			if tool, ok := acc.JustFinishedToolCall(); ok {
@@ -93,7 +94,7 @@ func runAgentLoop(client openai.Client, prompt string, writers Writers, llm2tui 
 		}
 
 		choice := acc.Choices[0] //.Message.Content
-		response_message := fmt.Sprint(choice.Message.Content)
+		response_message := choice.Message.Content
 
 		// always add response to message array with assistant role
 		messages[msg_len] = createAssistantMessage(choice)
@@ -126,7 +127,12 @@ func runAgentLoop(client openai.Client, prompt string, writers Writers, llm2tui 
 
 				results[idx], err = ExecuteToolCall(tool_call)
 				if err != nil {
-					fmt.Fprintf(writers.err, "%s\n", err.Error())
+					err_msg := fmt.Sprintf("Error during tool call: %s", err.Error())
+					fmt.Fprintf(writers.err, "%s\n", err_msg)
+
+					messages[msg_len] = createToolMessage(tool_call.ID, err_msg)
+					msg_len++
+
 					continue
 				}
 
