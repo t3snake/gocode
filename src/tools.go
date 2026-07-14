@@ -24,14 +24,13 @@ func ExecuteToolCall(toolcall openai.ChatCompletionMessageToolCallUnion) (string
 		return "", fmt.Errorf("unknown tool_call type %s.\n", toolcall.Type)
 	}
 
-	fncall := toolcall.AsFunction()
 	var arg_map map[string]any
-	err := json.Unmarshal([]byte(fncall.Function.Arguments), &arg_map)
+	err := json.Unmarshal([]byte(toolcall.Function.Arguments), &arg_map)
 	if err != nil {
 		return "", fmt.Errorf("Error while parsing arguments: %s\n", err.Error())
 	}
 
-	fnname := fncall.Function.Name
+	fnname := toolcall.Function.Name
 
 	switch fnname {
 	case ReadToolName:

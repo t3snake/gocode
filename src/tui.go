@@ -367,7 +367,7 @@ func (c ChatState) View() tea.View {
 
 	cr := c.prompt.Cursor()
 	if cr != nil {
-		cr.Y += lipgloss.Height(view) + 2
+		cr.Y += lipgloss.Height(view) + 1
 		cr.X += 1
 	}
 
