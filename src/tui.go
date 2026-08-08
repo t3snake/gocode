@@ -270,17 +270,18 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var output string
 		if msg.is_err {
 			output = msg.err
+
+			c.messages = append(c.messages, Message{
+				role:   1,
+				id:     uint8(len(c.messages)),
+				value:  output,
+				is_err: msg.is_err,
+			})
 		} else {
 			output = msg.out
 		}
 
 		c.is_loading = false
-		c.messages = append(c.messages, Message{
-			role:   1,
-			id:     uint8(len(c.messages)),
-			value:  output,
-			is_err: msg.is_err,
-		})
 
 		content := renderChatMessages(c)
 		c.viewport.SetContent(content)
