@@ -46,18 +46,20 @@ func runAgentLoop(client openai.Client, prompt string, writers Writers, llm2tui 
 			acc.AddChunk(chunk)
 
 			// check if streaming just finished with this chunk
-			if content, ok := acc.JustFinishedContent(); ok {
-				fmt.Fprintf(writers.out, "%s", content)
-				llm2tui <- Llm2Tui{
-					is_tool_call: false,
-					tool_name:    "",
-					params:       "",
+			if _, ok := acc.JustFinishedContent(); ok {
+				// fmt.Fprintf(writers.out, "%s", content)
+				if llm2tui != nil {
+					llm2tui <- Llm2Tui{
+						is_tool_call: false,
+						tool_name:    "",
+						params:       "",
 
-					is_chunk:      true,
-					is_last:       true,
-					chunk_content: chunk.Choices[0].Delta.Content,
+						is_chunk:      true,
+						is_last:       true,
+						chunk_content: chunk.Choices[0].Delta.Content,
 
-					token_spent: int(acc.Usage.TotalTokens),
+						token_spent: int(acc.Usage.TotalTokens),
+					}
 				}
 				continue
 			}
@@ -71,16 +73,21 @@ func runAgentLoop(client openai.Client, prompt string, writers Writers, llm2tui 
 				return 1
 			}
 
-			llm2tui <- Llm2Tui{
-				is_tool_call: false,
-				tool_name:    "",
-				params:       "",
+			// print chunk (helpful for non tui streaming)
+			if llm2tui != nil {
+				llm2tui <- Llm2Tui{
+					is_tool_call: false,
+					tool_name:    "",
+					params:       "",
 
-				is_chunk:      true,
-				is_last:       false,
-				chunk_content: chunk.Choices[0].Delta.Content,
+					is_chunk:      true,
+					is_last:       false,
+					chunk_content: chunk.Choices[0].Delta.Content,
 
-				token_spent: int(acc.Usage.TotalTokens),
+					token_spent: int(acc.Usage.TotalTokens),
+				}
+			} else {
+				fmt.Fprintf(writers.out, "%s", chunk.Choices[0].Delta.Content)
 			}
 		}
 
@@ -94,7 +101,7 @@ func runAgentLoop(client openai.Client, prompt string, writers Writers, llm2tui 
 		}
 
 		choice := acc.Choices[0] //.Message.Content
-		response_message := choice.Message.Content
+		// response_message := choice.Message.Content
 
 		// always add response to message array with assistant role
 		messages[msg_len] = createAssistantMessage(choice)
@@ -105,24 +112,28 @@ func runAgentLoop(client openai.Client, prompt string, writers Writers, llm2tui 
 			tool_calls := choice.Message.ToolCalls
 			for idx, tool_call := range tool_calls {
 				// TODO should be blocked until user gives permission
-				llm2tui <- Llm2Tui{
-					is_tool_call: true,
-					tool_name:    tool_call.AsFunction().Function.Name,
-					params:       tool_call.AsFunction().Function.Arguments,
+				if llm2tui != nil {
+					llm2tui <- Llm2Tui{
+						is_tool_call: true,
+						tool_name:    tool_call.AsFunction().Function.Name,
+						params:       tool_call.AsFunction().Function.Arguments,
 
-					is_chunk:      false,
-					is_last:       false,
-					chunk_content: "",
+						is_chunk:      false,
+						is_last:       false,
+						chunk_content: "",
 
-					token_spent: int(acc.Usage.TotalTokens),
+						token_spent: int(acc.Usage.TotalTokens),
+					}
 				}
 
-				user_action := <-tui2llm
+				if tui2llm != nil {
+					user_action := <-tui2llm
 
-				if !user_action.is_allowed {
-					// TODO send back to llm or return ?
-					fmt.Fprintf(writers.err, "User cancelled tool call.")
-					return 1
+					if !user_action.is_allowed {
+						// TODO send back to llm or return ?
+						fmt.Fprintf(writers.err, "User cancelled tool call.")
+						return 1
+					}
 				}
 
 				results[idx], err = ExecuteToolCall(tool_call)
@@ -143,7 +154,9 @@ func runAgentLoop(client openai.Client, prompt string, writers Writers, llm2tui 
 				msg_len++
 			}
 		} else {
-			fmt.Fprintln(writers.out, response_message)
+			// stream already wrote everything.
+			// fmt.Fprintln(writers.out, response_message)
+			fmt.Fprintln(writers.out, "")
 			break
 		}
 	}
