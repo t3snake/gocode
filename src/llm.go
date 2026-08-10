@@ -11,9 +11,13 @@ import (
 	"github.com/openai/openai-go/v3/option"
 )
 
+// Can be writing to stdout/stderr or files as logs
+// All printfs are written to logs, but specific logging is only written to log files
+// This is helpful in prompt mode on terminal, which usually would not show logs on the terminal
 type Writers struct {
-	out io.Writer
-	err io.Writer
+	out          io.Writer
+	err          io.Writer
+	suppressLogs bool
 }
 
 func runAgentLoop(client openai.Client, prompt string, writers Writers, llm2tui chan Llm2Tui, tui2llm chan Tui2Llm) (exitcode int) {

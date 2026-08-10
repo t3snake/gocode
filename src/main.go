@@ -26,8 +26,9 @@ func main() {
 		client := getClient()
 
 		retcode := runAgentLoop(client, prompt, Writers{
-			os.Stdout,
-			os.Stderr,
+			os.Stdout, // just print to stdout, (might also log in prompt mode)
+			os.Stderr, // just print to stderr, (might also log in prompt mode)
+			true,      // suppress exclusive logs, just have the ai output or err, maybe 'showLogs' flag enables logs.
 		}, nil, nil)
 
 		os.Exit(retcode)

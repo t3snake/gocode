@@ -28,3 +28,4 @@
 - [x] Chat flow
 - [x] Requires communication flow between LLM API and TUI state
 - [x] Fix duplicate messages
+- [x] Fix prompt mode after introducing channels and streaming
