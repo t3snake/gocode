@@ -7,6 +7,8 @@ import (
 	"io"
 	"os"
 
+	"github.com/t3snake/gocode/src/logger"
+
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 )
@@ -20,6 +22,9 @@ type Writers struct {
 	suppressLogs bool
 }
 
+type Messages struct {
+}
+
 func runAgentLoop(client openai.Client, prompt string, writers Writers, llm2tui chan Llm2Tui, tui2llm chan Tui2Llm) (exitcode int) {
 	var err error
 
@@ -30,9 +35,11 @@ func runAgentLoop(client openai.Client, prompt string, writers Writers, llm2tui 
 	// initial message with given prompt
 	messages[0] = createUserMessage(prompt)
 
-	// fmt.Fprintln(writers.err, "Logs will appear here!")
+	logger.Info("Starting new LLM agent loop.")
+	logger.Info(fmt.Sprintf("Prompt: '%s'", prompt))
+
 	for {
-		stream := client.Chat.Completions.NewStreaming(context.Background(),
+		stream := client.Chat.Completions.NewStreaming(context.TODO(),
 			openai.ChatCompletionNewParams{
 				Model:         "Qwen3.6-35B-A3B-UD-IQ4_XS.gguf",
 				Messages:      messages[:msg_len],
@@ -79,6 +86,7 @@ func runAgentLoop(client openai.Client, prompt string, writers Writers, llm2tui 
 
 			// print chunk (helpful for non tui streaming)
 			if llm2tui != nil {
+
 				llm2tui <- Llm2Tui{
 					is_tool_call: false,
 					tool_name:    "",

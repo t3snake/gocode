@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"strings"
@@ -26,18 +25,7 @@ func StartTUI() {
 	tui2llm := make(chan Tui2Llm)
 	llm2tui := make(chan Llm2Tui)
 
-	f, err := os.OpenFile("sessionLog.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: cant create log file: %v", err)
-		os.Exit(1)
-	}
-
-	logs := Loggers{
-		out: log.New(f, "INFO", log.Ldate|log.Ltime|log.Lshortfile|log.Lmsgprefix),
-		err: log.New(f, "ERROR", log.Ldate|log.Ltime|log.Lshortfile|log.Lmsgprefix),
-	}
-
-	p := tea.NewProgram(initialModel(llm2tui, tui2llm, logs))
+	p := tea.NewProgram(initialModel(llm2tui, tui2llm))
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error %v", err)
 		os.Exit(1)
@@ -82,7 +70,7 @@ type ChatStream struct {
 }
 
 // Runs agent loop using openai chat completion API
-func promptLlm(prompt string, tui2llm chan Tui2Llm, llm2tui chan Llm2Tui, logs Loggers) tea.Cmd {
+func promptLlm(prompt string, tui2llm chan Tui2Llm, llm2tui chan Llm2Tui) tea.Cmd {
 	// tea.Cmd can only take fn with empty params so return a function with empty params and use closure
 	// This function runs as a goroutine (handled by bubbletea)
 	// The return is any type, we have to intercept our type in Update function
@@ -90,14 +78,11 @@ func promptLlm(prompt string, tui2llm chan Tui2Llm, llm2tui chan Llm2Tui, logs L
 		var display_out strings.Builder
 		var display_err strings.Builder
 
-		out := io.MultiWriter(&display_out, logs.out.Writer())
-		err := io.MultiWriter(&display_err, logs.err.Writer())
-
 		client := getClient()
 
 		retcode := runAgentLoop(client, prompt, Writers{
-			out: out,
-			err: err,
+			out: &display_out,
+			err: &display_err,
 		}, llm2tui, tui2llm)
 
 		return ChatResult{
@@ -157,11 +142,9 @@ type ChatState struct {
 	// Channel for communication between TUI and LLM goroutines. For streaming and toolcall UX
 	tui2llm chan Tui2Llm
 	llm2tui chan Llm2Tui
-
-	logs Loggers
 }
 
-func initialModel(llm2tui chan Llm2Tui, tui2llm chan Tui2Llm, logs Loggers) ChatState {
+func initialModel(llm2tui chan Llm2Tui, tui2llm chan Tui2Llm) ChatState {
 	theme := catpuccinMacchiatoTheme
 
 	ta := textarea.New()
@@ -220,8 +203,6 @@ func initialModel(llm2tui chan Llm2Tui, tui2llm chan Tui2Llm, logs Loggers) Chat
 
 		llm2tui: llm2tui,
 		tui2llm: tui2llm,
-
-		logs: logs,
 	}
 }
 
@@ -333,7 +314,7 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			return c, tea.Batch(
 				c.spinner.Tick,
-				promptLlm(prompt, c.tui2llm, c.llm2tui, c.logs),
+				promptLlm(prompt, c.tui2llm, c.llm2tui),
 				listenLlmStream(c.llm2tui),
 			)
 

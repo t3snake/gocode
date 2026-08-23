@@ -2,7 +2,10 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"os"
+
+	"github.com/t3snake/gocode/src/logger"
 )
 
 func main() {
@@ -18,12 +21,23 @@ func main() {
 		}
 	})
 
+	f, err := os.OpenFile("sessionLog.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: cant create log file: %v", err)
+		os.Exit(1)
+	}
+	defer f.Close()
+
+	logger.Init(f)
+
 	if p_flag_found {
 		if prompt == "" {
 			panic("Prompt must not be empty")
 		}
 
 		client := getClient()
+
+		logger.Info("gocode started in prompt mode.")
 
 		retcode := runAgentLoop(client, prompt, Writers{
 			os.Stdout, // just print to stdout, (might also log in prompt mode)
@@ -33,6 +47,8 @@ func main() {
 
 		os.Exit(retcode)
 	}
+
+	logger.Info("gocode started in TUI mode.")
 
 	// else start TUI
 	StartTUI()
