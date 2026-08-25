@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"strings"
 
@@ -14,11 +13,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 )
-
-type Loggers struct {
-	out *log.Logger
-	err *log.Logger
-}
 
 // Starts and runs a bubbletea TUI program
 func StartTUI() {
@@ -140,8 +134,15 @@ type ChatState struct {
 	agent_style lipgloss.Style
 
 	// Channel for communication between TUI and LLM goroutines. For streaming and toolcall UX
+
 	tui2llm chan Tui2Llm
 	llm2tui chan Llm2Tui
+
+	// misc
+
+	// If mouse is pressed down, to set mouse mode, only one can happen (scroll) or (selecting text)
+	// Use opencode behavior
+	is_selecting bool
 }
 
 func initialModel(llm2tui chan Llm2Tui, tui2llm chan Tui2Llm) ChatState {
@@ -203,6 +204,8 @@ func initialModel(llm2tui chan Llm2Tui, tui2llm chan Tui2Llm) ChatState {
 
 		llm2tui: llm2tui,
 		tui2llm: tui2llm,
+
+		is_selecting: false,
 	}
 }
 
@@ -225,6 +228,16 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		c.viewport.SetWidth(msg.Width - 1)
 		c.viewport.SetHeight(msg.Height - c.prompt.Height() - 5)
 		c.viewport.Style = lipgloss.NewStyle().Padding(1).Align(lipgloss.Center)
+
+	case tea.MouseClickMsg:
+		// Note: Can either "select text" or "scroll" cant do both. Terminal alternate buffer limitation.
+		// Opencode and crush get around it by essentially doing this: while mouse is pressed, disable scrolling but enable text selection
+		c.is_selecting = true
+
+	case tea.MouseReleaseMsg:
+		// when mouse is "un"pressed / released, enable scrolling and disable text selection
+		c.is_selecting = false
+		tea.SetClipboard("selected text")
 
 	case ChatStream:
 		is_last_chunk := false
@@ -259,6 +272,7 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		content := renderChatMessages(c)
 		c.viewport.SetContent(content)
+		c.viewport.GotoBottom()
 
 		return c, cmd
 
@@ -360,7 +374,11 @@ func (c ChatState) View() tea.View {
 	v.BackgroundColor = c.theme.TerminalBackground
 	v.ForegroundColor = c.theme.Text
 	v.AltScreen = true
-	v.MouseMode = tea.MouseModeCellMotion
+	if c.is_selecting {
+		v.MouseMode = tea.MouseModeNone
+	} else {
+		v.MouseMode = tea.MouseModeCellMotion
+	}
 
 	cr := c.prompt.Cursor()
 	if cr != nil {
