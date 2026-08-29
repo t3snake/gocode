@@ -84,9 +84,7 @@ func runAgentLoop(client openai.Client, prompt string, writers Writers, llm2tui 
 				return 1
 			}
 
-			// print chunk (helpful for non tui streaming)
 			if llm2tui != nil {
-
 				llm2tui <- Llm2Tui{
 					is_tool_call: false,
 					tool_name:    "",
@@ -99,6 +97,7 @@ func runAgentLoop(client openai.Client, prompt string, writers Writers, llm2tui 
 					token_spent: int(acc.Usage.TotalTokens),
 				}
 			} else {
+				// print chunk (helpful for non tui streaming)
 				fmt.Fprintf(writers.out, "%s", chunk.Choices[0].Delta.Content)
 			}
 		}

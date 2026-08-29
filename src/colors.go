@@ -57,7 +57,7 @@ var catpuccinMacchiatoTheme = Theme{
 	Text:                Color(CTPC_SUBTEXT),
 	TerminalBackground:  Color(CTPC_BG),
 	UserChatBackground:  Color(CTPC_BG_2),
-	AgentChatBackground: Color(CTPC_BG_2),
+	AgentChatBackground: Color(CTPC_BG),
 }
 
 func Color(hex string) color.Color {

@@ -19,7 +19,7 @@ func StartTUI() {
 	tui2llm := make(chan Tui2Llm)
 	llm2tui := make(chan Llm2Tui)
 
-	p := tea.NewProgram(initialModel(llm2tui, tui2llm))
+	p := tea.NewProgram(initialModel(llm2tui, tui2llm), tea.WithFPS(120))
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error %v", err)
 		os.Exit(1)
@@ -150,6 +150,8 @@ func initialModel(llm2tui chan Llm2Tui, tui2llm chan Tui2Llm) ChatState {
 
 	ta := textarea.New()
 	ta.Placeholder = "Type to get started"
+	ta.ShowLineNumbers = false
+
 	ta.SetVirtualCursor(false)
 	ta.Focus()
 
@@ -166,8 +168,6 @@ func initialModel(llm2tui chan Llm2Tui, tui2llm chan Tui2Llm) ChatState {
 
 	ta.SetStyles(st)
 
-	ta.ShowLineNumbers = false
-
 	vp := viewport.New(viewport.WithHeight(10), viewport.WithWidth(30))
 	vp.SetContent("Go Code by t3snake")
 	vp.KeyMap.Left.SetEnabled(false)
@@ -177,8 +177,8 @@ func initialModel(llm2tui chan Llm2Tui, tui2llm chan Tui2Llm) ChatState {
 	s.Spinner = spinner.Points
 	s.Style = lipgloss.NewStyle().Foreground(Color(CTPC_RED))
 
-	us := lipgloss.NewStyle().Background(theme.UserChatBackground).MarginLeft(5).MarginBottom(1).Padding(1)
-	as := lipgloss.NewStyle().Background(theme.AgentChatBackground).MarginRight(5).MarginBottom(1).Padding(1)
+	us := lipgloss.NewStyle().Background(theme.UserChatBackground).Padding(1)
+	as := lipgloss.NewStyle().Background(theme.AgentChatBackground).Padding(1)
 
 	return ChatState{
 		app_width:  400,
@@ -356,19 +356,27 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (c ChatState) View() tea.View {
 	view := c.viewport.View() + "\n"
+	cursor_y := 0
+	cursor_x := 0
 
 	if c.is_loading {
-		view += fmt.Sprintf("Thinking %s", c.spinner.View())
+		spinner := fmt.Sprintf("Thinking %s", c.spinner.View())
+		view += spinner
+		cursor_y = lipgloss.Height(view)
+		cursor_x = len(spinner)
+	} else {
+		chatBoxStyle := lipgloss.NewStyle().
+			Width(c.prompt.Width()).
+			Height(7).
+			BorderStyle(lipgloss.NormalBorder()).
+			BorderForeground(c.theme.ActiveBorder).
+			MarginBottom(1)
+
+		cursor_y = lipgloss.Height(view) + 1 // accounting for newline
+		cursor_y = 1
+		view = view + "\n" + chatBoxStyle.Render(c.prompt.View())
 	}
-
-	chatBoxStyle := lipgloss.NewStyle().
-		Width(int(c.app_width)).
-		Height(7).
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderForeground(c.theme.ActiveBorder).
-		MarginBottom(1)
-
-	v := tea.NewView(view + "\n" + chatBoxStyle.Render(c.prompt.View()))
+	v := tea.NewView(view)
 
 	v.WindowTitle = "Go Code"
 	v.BackgroundColor = c.theme.TerminalBackground
@@ -382,8 +390,8 @@ func (c ChatState) View() tea.View {
 
 	cr := c.prompt.Cursor()
 	if cr != nil {
-		cr.Y += lipgloss.Height(view) + 1
-		cr.X += 1
+		cr.Y += cursor_y
+		cr.X += cursor_x
 	}
 
 	v.Cursor = cr
@@ -393,7 +401,7 @@ func (c ChatState) View() tea.View {
 
 func renderChatMessages(c ChatState) (content string) {
 	content = ""
-	msg_width := c.viewport.Width() - 5
+	msg_width := c.viewport.Width() - 2 // subtract padding
 	for _, msg := range c.messages {
 		switch msg.role {
 		case 0: // user message
