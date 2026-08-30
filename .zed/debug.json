@@ -17,5 +17,17 @@
     "program": "./src",
     "cwd": "$ZED_WORKTREE_ROOT",
     "args": ["-p", "hello"]
+  },
+  {
+    "adapter": "Delve",
+    "label": "Connect to a running Delve instance",
+    "program": "${ZED_WORKTREE_ROOT}/build/gocode",
+    "cwd": "$ZED_WORKTREE_ROOT",
+    "args": [],
+    "env": {},
+    "request": "launch",
+    "mode": "exec",
+    "stopOnEntry": false,
+    "tcp_connection": { "host": "127.0.0.1", "port": 34277 }
   }
 ]

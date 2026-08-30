@@ -223,11 +223,14 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		c.app_height = uint16(msg.Height)
 		c.app_width = uint16(msg.Width)
 
-		c.prompt.SetWidth(msg.Width - 1)
+		c.prompt.SetWidth(msg.Width - 3)
 
 		c.viewport.SetWidth(msg.Width - 1)
-		c.viewport.SetHeight(msg.Height - c.prompt.Height() - 5)
+		c.viewport.SetHeight(msg.Height - c.prompt.Height() - 3)
 		c.viewport.Style = lipgloss.NewStyle().Padding(1).Align(lipgloss.Center)
+
+		content := renderChatMessages(c)
+		c.viewport.SetContent(content)
 
 	case tea.MouseClickMsg:
 		// Note: Can either "select text" or "scroll" cant do both. Terminal alternate buffer limitation.
@@ -293,6 +296,7 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		c.is_loading = false
 
+		c.viewport.SetHeight(int(c.app_height) - c.prompt.Height() - 3)
 		content := renderChatMessages(c)
 		c.viewport.SetContent(content)
 
@@ -323,6 +327,7 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				},
 			)
 
+			c.viewport.SetHeight(int(c.app_height) - 3)
 			content := renderChatMessages(c)
 			c.viewport.SetContent(content)
 
@@ -366,14 +371,14 @@ func (c ChatState) View() tea.View {
 		cursor_x = len(spinner)
 	} else {
 		chatBoxStyle := lipgloss.NewStyle().
-			Width(c.prompt.Width()).
-			Height(7).
 			BorderStyle(lipgloss.NormalBorder()).
 			BorderForeground(c.theme.ActiveBorder).
+			Width(int(c.app_width) - 1).
+			Height(7).
 			MarginBottom(1)
 
 		cursor_y = lipgloss.Height(view) + 1 // accounting for newline
-		cursor_y = 1
+		cursor_x = 1
 		view = view + "\n" + chatBoxStyle.Render(c.prompt.View())
 	}
 	v := tea.NewView(view)
