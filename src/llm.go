@@ -29,6 +29,7 @@ func runAgentLoop(client openai.Client, prompt string, writers Writers, llm2tui 
 	var err error
 
 	// messages array that maintains chat history
+	// TODO add developer prompt, customizable?
 	messages := make([]openai.ChatCompletionMessageParamUnion, 100)
 	msg_len := 1
 
@@ -76,11 +77,14 @@ func runAgentLoop(client openai.Client, prompt string, writers Writers, llm2tui 
 			}
 
 			if tool, ok := acc.JustFinishedToolCall(); ok {
-				fmt.Fprintf(writers.out, "%s - (%s)", tool.Name, tool.Arguments)
+				tool_call := fmt.Sprintf("Tool call requested - %s (%s)", tool.Name, tool.Arguments)
+				logger.Info(tool_call)
+				fmt.Fprintln(writers.out, tool_call)
 			}
 
 			if refusal, ok := acc.JustFinishedRefusal(); ok {
-				fmt.Fprintf(writers.err, "Refusal (LLM): %s", refusal)
+				refusal_out := fmt.Sprintf("Refusal (LLM): %s", refusal)
+				fmt.Fprintln(writers.err, refusal_out)
 				return 1
 			}
 
@@ -103,16 +107,18 @@ func runAgentLoop(client openai.Client, prompt string, writers Writers, llm2tui 
 		}
 
 		if err := stream.Err(); err != nil {
+			logger.Error(err.Error())
 			fmt.Fprintf(writers.err, "error: %v\n", err)
 			return 1
 		}
 
 		if len(acc.Choices) == 0 {
-			panic("No choices in response")
+			logger.Error("No choices in LLM response.")
+			fmt.Fprintln(writers.err, "Error: No choices in LLM response")
+			return 1
 		}
 
-		choice := acc.Choices[0] //.Message.Content
-		// response_message := choice.Message.Content
+		choice := acc.Choices[0]
 
 		// always add response to message array with assistant role
 		messages[msg_len] = createAssistantMessage(choice)
@@ -142,7 +148,8 @@ func runAgentLoop(client openai.Client, prompt string, writers Writers, llm2tui 
 
 					if !user_action.is_allowed {
 						// TODO send back to llm or return ?
-						fmt.Fprintf(writers.err, "User cancelled tool call.")
+						logger.Info("User did not allow tool call")
+						fmt.Fprintf(writers.err, "User did not allow tool call")
 						return 1
 					}
 				}
@@ -150,6 +157,7 @@ func runAgentLoop(client openai.Client, prompt string, writers Writers, llm2tui 
 				results[idx], err = ExecuteToolCall(tool_call)
 				if err != nil {
 					err_msg := fmt.Sprintf("Error during tool call: %s", err.Error())
+					logger.Error(err_msg)
 					fmt.Fprintf(writers.err, "%s\n", err_msg)
 
 					messages[msg_len] = createToolMessage(tool_call.ID, err_msg)
@@ -158,15 +166,25 @@ func runAgentLoop(client openai.Client, prompt string, writers Writers, llm2tui 
 					continue
 				}
 
-				fmt.Fprintf(writers.err, "===== debug info: tool info =====\nname: %s\nparams: %s\nresult: %s\n===== END =====\n",
-					tool_call.Function.Name, tool_call.Function.Arguments, results[idx])
+				// TODO currently hardcoded truncation of tool result to 1000 characters? Need setting for "on/off" and "when to truncate"
+				var tool_result string
+				trunc_limit := 1000
+				if len(results[idx]) < trunc_limit {
+					tool_result = results[idx]
+				} else {
+					tool_result = results[idx][:trunc_limit] + "...(truncated)"
+				}
+
+				tool_log := fmt.Sprintf("Tool info\nname: %s\nparams: %s\nresult: %s\n", tool_call.Function.Name, tool_call.Function.Arguments, tool_result)
+
+				logger.Info(tool_log)
+				fmt.Fprintf(writers.err, "===== debug info =====\n%s===== END =====\n", tool_log)
 
 				messages[msg_len] = createToolMessage(tool_call.ID, results[idx])
 				msg_len++
 			}
 		} else {
 			// stream already wrote everything.
-			// fmt.Fprintln(writers.out, response_message)
 			fmt.Fprintln(writers.out, "")
 			break
 		}

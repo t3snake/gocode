@@ -6,15 +6,19 @@
 - [ ] Add tool call display in viewport
 - [ ] Add tool call log
 - [ ] Just append to streaming message instead of re-rendering whole viewport
-- [ ] Add more themes
 
 ### Very soon
 
 - [ ] Markdown rendering library (Easy picking)
 - [ ] Add cancel during stream (saves tokens / money)
+- [ ] Add either cancel recovery -> recovers prompt in promptbox on cancellation or better up for history of prompts
 - [ ] Add tool call prompt for user
+- [ ] Add tokens, context window info
 - [ ] /new to clear context (currently always clear context)
 - [ ] Save file for sessions
+- [ ] Refactor tui and llm into separate packages
+- [ ] Refactor tools into separate package (map per toolname to get everything?)
+- [ ] Add more themes
 
 ### Later
 
