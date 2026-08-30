@@ -226,11 +226,18 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		c.prompt.SetWidth(msg.Width - 3)
 
 		c.viewport.SetWidth(msg.Width - 1)
-		c.viewport.SetHeight(msg.Height - c.prompt.Height() - 3)
+
+		if c.is_loading {
+			c.viewport.SetHeight(msg.Height - 3)
+		} else {
+			c.viewport.SetHeight(msg.Height - c.prompt.Height() - 3)
+		}
+
 		c.viewport.Style = lipgloss.NewStyle().Padding(1).Align(lipgloss.Center)
 
 		content := renderChatMessages(c)
 		c.viewport.SetContent(content)
+		c.viewport.GotoBottom()
 
 	case tea.MouseClickMsg:
 		// Note: Can either "select text" or "scroll" cant do both. Terminal alternate buffer limitation.

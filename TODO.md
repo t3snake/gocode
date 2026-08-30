@@ -6,6 +6,7 @@
 - [ ] Add tool call display in viewport
 - [ ] Add tool call log
 - [ ] Just append to streaming message instead of re-rendering whole viewport
+- [ ] Fix stuck at thinking ui when token context cutoff happens
 
 ### Very soon
 
