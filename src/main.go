@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -39,7 +40,10 @@ func main() {
 
 		logger.Info("gocode started in prompt mode.")
 
-		retcode := runAgentLoop(client, prompt, Writers{
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		retcode := runAgentLoop(client, ctx, prompt, Writers{
 			os.Stdout, // just print to stdout, (might also log in prompt mode)
 			os.Stderr, // just print to stderr, (might also log in prompt mode)
 			true,      // suppress exclusive logs, just have the ai output or err, maybe 'showLogs' flag enables logs.

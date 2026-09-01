@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -39,12 +41,14 @@ type Llm2Tui struct {
 
 	// stream thinking/content
 
-	is_chunk      bool // Reports whether a chunk was streamed
-	is_last       bool // Reports whether the last chunk was just streamed. Only valid if [Llm2Tui.is_chunk] is true.
-	chunk_content string
+	is_chunk        bool // Reports whether a chunk was streamed
+	is_last_content bool // Reports whether the last chunk was just streamed. Only valid if [Llm2Tui.is_chunk] is true.
+	chunk_content   string
 
-	token_spent int // Reports how many tokens were spent so far in the agent loop.
+	is_usage_chunk bool // in streaming, the very last chunk when usage is enabled, just sends the token_spent
+	token_spent    int  // Reports how many tokens were spent so far in the agent loop.
 
+	should_stop_listening bool // tui can safely stop listening when this is true
 }
 
 type Tui2Llm struct {
@@ -64,7 +68,7 @@ type ChatStream struct {
 }
 
 // Runs agent loop using openai chat completion API
-func promptLlm(prompt string, tui2llm chan Tui2Llm, llm2tui chan Llm2Tui) tea.Cmd {
+func promptLlm(prompt string, ctx context.Context, tui2llm chan Tui2Llm, llm2tui chan Llm2Tui) tea.Cmd {
 	// tea.Cmd can only take fn with empty params so return a function with empty params and use closure
 	// This function runs as a goroutine (handled by bubbletea)
 	// The return is any type, we have to intercept our type in Update function
@@ -74,16 +78,30 @@ func promptLlm(prompt string, tui2llm chan Tui2Llm, llm2tui chan Llm2Tui) tea.Cm
 
 		client := getClient()
 
-		retcode := runAgentLoop(client, prompt, Writers{
+		retcode := runAgentLoop(client, ctx, prompt, Writers{
 			out: &display_out,
 			err: &display_err,
 		}, llm2tui, tui2llm)
 
-		return ChatResult{
-			out:    display_out.String(),
-			err:    display_err.String(),
-			is_err: (retcode != 0),
+		select {
+		case <-ctx.Done():
+			if ctx.Err() != nil {
+				display_err.WriteString(ctx.Err().Error())
+			}
+			return ChatResult{
+				out:    display_out.String(),
+				err:    display_err.String(),
+				is_err: (retcode != 0),
+			}
+
+		default:
+			return ChatResult{
+				out:    display_out.String(),
+				err:    display_err.String(),
+				is_err: (retcode != 0),
+			}
 		}
+
 	}
 }
 
@@ -135,8 +153,10 @@ type ChatState struct {
 
 	// Channel for communication between TUI and LLM goroutines. For streaming and toolcall UX
 
-	tui2llm chan Tui2Llm
-	llm2tui chan Llm2Tui
+	tui2llm    chan Tui2Llm
+	llm2tui    chan Llm2Tui
+	ctx        context.Context
+	ctx_cancel context.CancelCauseFunc
 
 	// misc
 
@@ -205,6 +225,9 @@ func initialModel(llm2tui chan Llm2Tui, tui2llm chan Tui2Llm) ChatState {
 		llm2tui: llm2tui,
 		tui2llm: tui2llm,
 
+		ctx:        context.TODO(),
+		ctx_cancel: nil,
+
 		is_selecting: false,
 	}
 }
@@ -250,8 +273,6 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		tea.SetClipboard("selected text")
 
 	case ChatStream:
-		is_last_chunk := false
-
 		if msg.llm_msg.is_chunk {
 			c.current_message = Message{
 				role:  1,
@@ -259,8 +280,7 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				value: c.current_message.value + msg.llm_msg.chunk_content,
 			}
 
-			if msg.llm_msg.is_last {
-				is_last_chunk = true
+			if msg.llm_msg.is_last_content {
 				c.messages = append(c.messages, c.current_message)
 				c.current_message.value = ""
 			}
@@ -274,7 +294,7 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		if is_last_chunk {
+		if msg.llm_msg.should_stop_listening {
 			cmd = nil
 		} else {
 			cmd = listenLlmStream(c.llm2tui)
@@ -307,6 +327,9 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		content := renderChatMessages(c)
 		c.viewport.SetContent(content)
 
+		c.ctx = context.TODO()
+		c.ctx_cancel = nil
+
 		return c, nil
 
 	case tea.KeyPressMsg:
@@ -338,11 +361,19 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			content := renderChatMessages(c)
 			c.viewport.SetContent(content)
 
+			c.ctx, c.ctx_cancel = context.WithCancelCause(context.Background())
+
 			return c, tea.Batch(
 				c.spinner.Tick,
-				promptLlm(prompt, c.tui2llm, c.llm2tui),
+				promptLlm(prompt, c.ctx, c.tui2llm, c.llm2tui),
 				listenLlmStream(c.llm2tui),
 			)
+
+		case "esc":
+			// TODO double escape for cancellation
+			if c.is_loading && c.ctx_cancel != nil {
+				c.ctx_cancel(errors.New("User cancellation."))
+			}
 
 		default:
 			if !c.prompt.Focused() {

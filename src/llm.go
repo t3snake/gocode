@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"github.com/t3snake/gocode/src/logger"
 
@@ -25,8 +26,12 @@ type Writers struct {
 type Messages struct {
 }
 
-func runAgentLoop(client openai.Client, prompt string, writers Writers, llm2tui chan Llm2Tui, tui2llm chan Tui2Llm) (exitcode int) {
+func runAgentLoop(client openai.Client, parent_ctx context.Context, prompt string, writers Writers, llm2tui chan Llm2Tui, tui2llm chan Tui2Llm) (exitcode int) {
 	var err error
+
+	// TODO does stream take 2 minute for overall stream or for each stream event? could be less
+	ctx, cancel := context.WithTimeout(parent_ctx, 2*time.Minute)
+	defer cancel()
 
 	// messages array that maintains chat history
 	// TODO add developer prompt, customizable?
@@ -40,12 +45,15 @@ func runAgentLoop(client openai.Client, prompt string, writers Writers, llm2tui 
 	logger.Info(fmt.Sprintf("Prompt: '%s'", prompt))
 
 	for {
-		stream := client.Chat.Completions.NewStreaming(context.TODO(),
+		stream := client.Chat.Completions.NewStreaming(ctx,
 			openai.ChatCompletionNewParams{
-				Model:         "Qwen3.6-35B-A3B-UD-IQ4_XS.gguf",
-				Messages:      messages[:msg_len],
-				Tools:         registerTools(),
-				StreamOptions: openai.ChatCompletionStreamOptionsParam{},
+				Model:    "Qwen3.6-35B-A3B-UD-IQ4_XS.gguf",
+				Messages: messages[:msg_len],
+				Tools:    registerTools(),
+				StreamOptions: openai.ChatCompletionStreamOptionsParam{
+					IncludeObfuscation: openai.Bool(true),
+					IncludeUsage:       openai.Bool(true),
+				},
 			},
 			option.WithMaxRetries(2),
 		)
@@ -57,20 +65,41 @@ func runAgentLoop(client openai.Client, prompt string, writers Writers, llm2tui 
 
 			acc.AddChunk(chunk)
 
-			// check if streaming just finished with this chunk
-			if _, ok := acc.JustFinishedContent(); ok {
-				// fmt.Fprintf(writers.out, "%s", content)
+			if len(chunk.Choices) == 0 {
+				// NOTE last usage chunk that comes with stream option "include usage". Add to accumulator.
 				if llm2tui != nil {
 					llm2tui <- Llm2Tui{
 						is_tool_call: false,
 						tool_name:    "",
 						params:       "",
 
-						is_chunk:      true,
-						is_last:       true,
-						chunk_content: chunk.Choices[0].Delta.Content,
+						is_chunk:        false,
+						is_last_content: false,
+						chunk_content:   "",
 
-						token_spent: int(acc.Usage.TotalTokens),
+						is_usage_chunk: true,
+						token_spent:    int(acc.Usage.TotalTokens),
+					}
+
+				}
+				continue
+			}
+
+			// check if streaming just finished with this chunk
+			if _, ok := acc.JustFinishedContent(); ok {
+				// NOTE seems this is not the last chunk sent, there is one last chunk sent without choices and just Usage data
+				if llm2tui != nil {
+					llm2tui <- Llm2Tui{
+						is_tool_call: false,
+						tool_name:    "",
+						params:       "",
+
+						is_chunk:        true,
+						is_last_content: true,
+						chunk_content:   chunk.Choices[0].Delta.Content,
+
+						is_usage_chunk: false,
+						token_spent:    0,
 					}
 				}
 				continue
@@ -94,11 +123,12 @@ func runAgentLoop(client openai.Client, prompt string, writers Writers, llm2tui 
 					tool_name:    "",
 					params:       "",
 
-					is_chunk:      true,
-					is_last:       false,
-					chunk_content: chunk.Choices[0].Delta.Content,
+					is_chunk:        true,
+					is_last_content: false,
+					chunk_content:   chunk.Choices[0].Delta.Content,
 
-					token_spent: int(acc.Usage.TotalTokens),
+					is_usage_chunk: false,
+					token_spent:    0,
 				}
 			} else {
 				// print chunk (helpful for non tui streaming)
@@ -135,9 +165,9 @@ func runAgentLoop(client openai.Client, prompt string, writers Writers, llm2tui 
 						tool_name:    tool_call.AsFunction().Function.Name,
 						params:       tool_call.AsFunction().Function.Arguments,
 
-						is_chunk:      false,
-						is_last:       false,
-						chunk_content: "",
+						is_chunk:        false,
+						is_last_content: false,
+						chunk_content:   "",
 
 						token_spent: int(acc.Usage.TotalTokens),
 					}
@@ -185,6 +215,24 @@ func runAgentLoop(client openai.Client, prompt string, writers Writers, llm2tui 
 			}
 		} else {
 			// stream already wrote everything.
+			if llm2tui != nil {
+				// send stop listening signal
+				llm2tui <- Llm2Tui{
+					is_tool_call: false,
+					tool_name:    "",
+					params:       "",
+
+					is_chunk:        false,
+					is_last_content: false,
+					chunk_content:   "",
+
+					is_usage_chunk: false,
+					token_spent:    0,
+
+					should_stop_listening: true,
+				}
+
+			}
 			fmt.Fprintln(writers.out, "")
 			break
 		}
