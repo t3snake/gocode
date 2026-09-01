@@ -277,6 +277,17 @@ func createUserMessage(prompt string) openai.ChatCompletionMessageParamUnion {
 	}
 }
 
+// Creates a ChatCompletion message with role "user" and prompt as content
+func createDeveloperMessage(prompt string) openai.ChatCompletionMessageParamUnion {
+	return openai.ChatCompletionMessageParamUnion{
+		OfDeveloper: &openai.ChatCompletionDeveloperMessageParam{
+			Content: openai.ChatCompletionDeveloperMessageParamContentUnion{
+				OfString: openai.String(prompt),
+			},
+		},
+	}
+}
+
 // Creates a ChatCompletion message with role "assistant" and prompt_response as content
 func createAssistantMessage(response openai.ChatCompletionChoice) openai.ChatCompletionMessageParamUnion {
 	asst_msg := response.Message.ToAssistantMessageParam()

@@ -225,7 +225,7 @@ func initialModel(llm2tui chan Llm2Tui, tui2llm chan Tui2Llm) ChatState {
 		llm2tui: llm2tui,
 		tui2llm: tui2llm,
 
-		ctx:        context.TODO(),
+		ctx:        nil,
 		ctx_cancel: nil,
 
 		is_selecting: false,
