@@ -13,7 +13,10 @@ import (
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/glamour/v2"
+	"charm.land/glamour/v2/styles"
 	"charm.land/lipgloss/v2"
+	"github.com/t3snake/gocode/src/logger"
 )
 
 // Starts and runs a bubbletea TUI program
@@ -42,7 +45,7 @@ type Llm2Tui struct {
 	// stream thinking/content
 
 	is_chunk        bool // Reports whether a chunk was streamed
-	is_last_content bool // Reports whether the last chunk was just streamed. Only valid if [Llm2Tui.is_chunk] is true.
+	is_last_content bool // Reports whether the last chunk was just streamed. Only valid if [Llm2Tui.is_chunk] is true. Not used currently, TODO evaluate
 	chunk_content   string
 
 	is_usage_chunk bool // in streaming, the very last chunk when usage is enabled, just sends the token_spent
@@ -115,12 +118,21 @@ func listenLlmStream(llm2tui chan Llm2Tui) tea.Cmd {
 
 // ----- Main TUI Model Update View logic -----
 
+type Role uint8
+
+const (
+	USER Role = iota
+	LLM  Role = iota
+	TOOL Role = iota
+)
+
 // Struct representing user and chat-agent/llm messages
 type Message struct {
-	role   uint8 // 0 user, 1 llm
-	is_err bool
-	id     uint8  // unique identifier, currently only 256 messages possible
-	value  string // message
+	role         Role // 0 USER, 1 LLM, 2 TOOL
+	is_err       bool
+	id           uint8  // unique identifier, currently only 256 messages possible
+	display_text string // message
+	error_text   string // non null and non empty when is_err is true
 }
 
 // TUI main state
@@ -209,10 +221,11 @@ func initialModel(llm2tui chan Llm2Tui, tui2llm chan Tui2Llm) ChatState {
 
 		messages: []Message{},
 		current_message: Message{
-			role:   1,
-			is_err: false,
-			id:     5,
-			value:  "",
+			role:         LLM,
+			is_err:       false,
+			id:           5,
+			display_text: "",
+			error_text:   "",
 		},
 
 		is_loading: false,
@@ -274,16 +287,7 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ChatStream:
 		if msg.llm_msg.is_chunk {
-			c.current_message = Message{
-				role:  1,
-				id:    uint8(len(c.messages)),
-				value: c.current_message.value + msg.llm_msg.chunk_content,
-			}
-
-			if msg.llm_msg.is_last_content {
-				c.messages = append(c.messages, c.current_message)
-				c.current_message.value = ""
-			}
+			c.current_message.display_text += msg.llm_msg.chunk_content
 		}
 
 		if msg.llm_msg.is_tool_call {
@@ -307,27 +311,22 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return c, cmd
 
 	case ChatResult:
-		var output string
-		if msg.is_err {
-			output = msg.err
+		c.current_message.is_err = msg.is_err
+		c.current_message.error_text = msg.err
 
-			c.messages = append(c.messages, Message{
-				role:   1,
-				id:     uint8(len(c.messages)),
-				value:  output,
-				is_err: msg.is_err,
-			})
-		} else {
-			output = msg.out
-		}
+		c.messages = append(c.messages, c.current_message)
+
+		c.current_message.display_text = ""
+		c.current_message.error_text = ""
+		c.current_message.is_err = false
 
 		c.is_loading = false
 
-		c.viewport.SetHeight(int(c.app_height) - c.prompt.Height() - 3)
+		c.viewport.SetHeight(int(c.app_height) - c.prompt.Height() - 2)
 		content := renderChatMessages(c)
 		c.viewport.SetContent(content)
 
-		c.ctx = context.TODO()
+		c.ctx = nil
 		c.ctx_cancel = nil
 
 		return c, nil
@@ -335,6 +334,7 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "ctrl+c":
+			// TODO copy when text selected, or remove ctrl+c binding
 			return c, tea.Quit
 
 		case "enter":
@@ -351,11 +351,21 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			c.prompt.Reset()
 			c.messages = append(c.messages,
 				Message{
-					role:  0,
-					id:    uint8(len(c.messages)),
-					value: prompt,
+					role:         USER,
+					id:           uint8(len(c.messages)),
+					display_text: prompt,
+					is_err:       false,
+					error_text:   "",
 				},
 			)
+
+			c.current_message = Message{
+				role:         LLM,
+				id:           uint8(len(c.messages)),
+				display_text: "",
+				is_err:       false,
+				error_text:   "",
+			}
 
 			c.viewport.SetHeight(int(c.app_height) - 3)
 			content := renderChatMessages(c)
@@ -372,7 +382,7 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "esc":
 			// TODO double escape for cancellation
 			if c.is_loading && c.ctx_cancel != nil {
-				c.ctx_cancel(errors.New("User cancellation."))
+				c.ctx_cancel(errors.New("user-cancel"))
 			}
 
 		default:
@@ -445,30 +455,52 @@ func (c ChatState) View() tea.View {
 func renderChatMessages(c ChatState) (content string) {
 	content = ""
 	msg_width := c.viewport.Width() - 2 // subtract padding
+
+	// md render lib
+	style := styles.DarkStyleConfig
+	glam, _ := glamour.NewTermRenderer(
+		glamour.WithWordWrap(msg_width),
+		glamour.WithStyles(style),
+	)
+
 	for _, msg := range c.messages {
 		switch msg.role {
-		case 0: // user message
-			prefix := ""
-			if msg.is_err {
-				prefix = lipgloss.NewStyle().
-					Foreground(Color(CTPC_RED)).
-					Render("Error: ")
-			}
+		case USER:
 			content += c.user_style.
 				Width(msg_width).
-				Render(prefix+msg.value) + "\n"
-		case 1: // agent message
-			content += c.agent_style.
-				Width(msg_width).
-				Render(msg.value) + "\n"
+				Render(msg.display_text) + "\n"
+
+		case LLM:
+			postfix := ""
+			if msg.is_err {
+				postfix = lipgloss.NewStyle().
+					Foreground(Color(CTPC_RED)).
+					Render(fmt.Sprintf("\nError: %s", msg.error_text))
+			}
+
+			glamout, err := glam.Render(msg.display_text)
+			if err != nil {
+				logger.Error(err.Error())
+			}
+			content += glamout + postfix + "\n"
+
+			// content += c.agent_style.
+			// Width(msg_width).
+			// Render(msg.display_text+postfix) + "\n"
 		}
 	}
 
 	// render currently streaming message
-	if len(c.current_message.value) != 0 {
-		content += c.agent_style.
-			Width(msg_width).
-			Render(c.current_message.value) + "\n"
+	if len(c.current_message.display_text) != 0 {
+		glamout, err := glam.Render(c.current_message.display_text)
+		if err != nil {
+			logger.Error(err.Error())
+		}
+
+		content += glamout + "\n"
+		// content += c.agent_style.
+		// 	Width(msg_width).
+		// 	Render(c.current_message.value) + "\n"
 	}
 
 	return content

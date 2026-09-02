@@ -8,7 +8,6 @@
 
 ### Very soon
 
-- [ ] Markdown rendering library (Easy picking)
 - [ ] Add either cancel recovery -> recovers prompt in promptbox on cancellation or better up for history of prompts
 - [ ] Add tool call prompt for user
 - [ ] Add tokens, context window info
@@ -29,6 +28,7 @@
 
 ## Completed list
 
+- [x] Markdown rendering library (Easy picking)
 - [x] Fix stuck at thinking ui when token context cutoff happens
 - [x] Add tool call logging
 - [x] Add cancel during stream (saves tokens / money)

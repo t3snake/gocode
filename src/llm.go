@@ -45,6 +45,13 @@ func runAgentLoop(client openai.Client, parent_ctx context.Context, prompt strin
 	logger.Info(fmt.Sprintf("Prompt: '%s'", prompt))
 
 	for {
+		if msg_len >= 100 {
+			message := "Message count reached >= 100. Time to increase array size."
+			logger.Error(message)
+			fmt.Println(writers.err, message)
+			return 1
+		}
+
 		stream := client.Chat.Completions.NewStreaming(ctx,
 			openai.ChatCompletionNewParams{
 				Model:    "Qwen3.6-35B-A3B-UD-IQ4_XS.gguf",
@@ -196,9 +203,10 @@ func runAgentLoop(client openai.Client, parent_ctx context.Context, prompt strin
 					continue
 				}
 
-				// TODO currently hardcoded truncation of tool result to 1000 characters? Need setting for "on/off" and "when to truncate"
 				var tool_result string
-				trunc_limit := 1000
+
+				// TODO currently hardcoded truncation of tool result to 300 characters? Need setting for "on/off" and "when to truncate"
+				trunc_limit := 300
 				if len(results[idx]) < trunc_limit {
 					tool_result = results[idx]
 				} else {
@@ -277,7 +285,7 @@ func createUserMessage(prompt string) openai.ChatCompletionMessageParamUnion {
 	}
 }
 
-// Creates a ChatCompletion message with role "user" and prompt as content
+// Creates a ChatCompletion message with role "developer" and prompt as content
 func createDeveloperMessage(prompt string) openai.ChatCompletionMessageParamUnion {
 	return openai.ChatCompletionMessageParamUnion{
 		OfDeveloper: &openai.ChatCompletionDeveloperMessageParam{
