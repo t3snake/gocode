@@ -191,7 +191,7 @@ func runAgentLoop(client openai.Client, parent_ctx context.Context, prompt strin
 					}
 				}
 
-				results[idx], err = ExecuteToolCall(tool_call)
+				results[idx], err = ExecuteToolCall(tool_call, ctx)
 				if err != nil {
 					err_msg := fmt.Sprintf("Error during tool call: %s", err.Error())
 					logger.Error(err_msg)

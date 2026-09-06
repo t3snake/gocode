@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 
 	"github.com/openai/openai-go/v3"
@@ -13,11 +15,12 @@ import (
 // Constants
 const ReadToolName = "ReadFile"
 const WriteToolName = "WriteFile"
-const BashToolName = "RunBashCommand"
+
+const RunCommandToolName = "RunShellCommand"
 
 // Tool utils
 
-func ExecuteToolCall(toolcall openai.ChatCompletionMessageToolCallUnion) (string, error) {
+func ExecuteToolCall(toolcall openai.ChatCompletionMessageToolCallUnion, ctx context.Context) (string, error) {
 	if toolcall.Type == "custom" {
 		return "", fmt.Errorf("custom tool_call type not supported.\n")
 	} else if toolcall.Type != "function" {
@@ -80,7 +83,7 @@ func ExecuteToolCall(toolcall openai.ChatCompletionMessageToolCallUnion) (string
 
 		return "write_file successful", nil
 
-	case BashToolName:
+	case RunCommandToolName:
 		command, ok := arg_map["command"]
 		if !ok {
 			return "", fmt.Errorf("Error: command argument not available in %s tool.\n", fnname)
@@ -90,7 +93,7 @@ func ExecuteToolCall(toolcall openai.ChatCompletionMessageToolCallUnion) (string
 			return "", fmt.Errorf("Error: command not of type string\n")
 		}
 
-		result, err := runBashCommand(commandstr)
+		result, err := runCommand(commandstr, ctx)
 		if err != nil {
 			// in case of bash, it is not error but just stderr output
 			return err.Error(), nil
@@ -166,10 +169,18 @@ func writeFile(path, content string) (err error) {
 }
 
 func runBashRegistration() openai.ChatCompletionToolUnionParam {
+	description := "Execute a shell command"
+
+	if runtime.GOOS == "windows" {
+		description += " in powershell (pwsh)"
+	} else {
+		description += " in bash"
+	}
+
 	return openai.ChatCompletionToolUnionParam{
 		OfFunction: &openai.ChatCompletionFunctionToolParam{
 			Function: openai.FunctionDefinitionParam{
-				Name:        BashToolName,
+				Name:        RunCommandToolName,
 				Description: openai.String("Execute a shell command"),
 				Parameters: openai.FunctionParameters{
 					"type": "object",
@@ -186,9 +197,14 @@ func runBashRegistration() openai.ChatCompletionToolUnionParam {
 		},
 	}
 }
-func runBashCommand(command string) (stdout string, stderr error) {
-	cmd_and_args := strings.Split(command, " ")
-	cmd := exec.Command(cmd_and_args[0], cmd_and_args[1:]...)
+
+func runCommand(command string, ctx context.Context) (stdout string, stderr error) {
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command)
+	} else {
+		cmd = exec.CommandContext(ctx, "bash", "-c", command)
+	}
 
 	var out strings.Builder
 	var err_out strings.Builder
@@ -197,7 +213,7 @@ func runBashCommand(command string) (stdout string, stderr error) {
 
 	err := cmd.Run()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("%s", err.Error())
 	}
 
 	stderr = nil
