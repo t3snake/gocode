@@ -93,13 +93,13 @@ func ExecuteToolCall(toolcall openai.ChatCompletionMessageToolCallUnion, ctx con
 			return "", fmt.Errorf("Error: command not of type string\n")
 		}
 
-		result, err := runCommand(commandstr, ctx)
+		stdout, stderr, err := runCommand(commandstr, ctx)
 		if err != nil {
 			// in case of bash, it is not error but just stderr output
-			return err.Error(), nil
+			return fmt.Sprintf("stdout: %s\nstderr: %s\nerror: %v", stdout, stderr, err), nil
 		}
 
-		return result, nil
+		return fmt.Sprintf("stdout: %s\nstderr: %s\n", stdout, stderr), nil
 	}
 
 	return "", fmt.Errorf("Error: unknown tool name %s\n", fnname)
@@ -198,7 +198,7 @@ func runBashRegistration() openai.ChatCompletionToolUnionParam {
 	}
 }
 
-func runCommand(command string, ctx context.Context) (stdout string, stderr error) {
+func runCommand(command string, ctx context.Context) (stdout, stderr string, err error) {
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
 		cmd = exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command)
@@ -211,14 +211,10 @@ func runCommand(command string, ctx context.Context) (stdout string, stderr erro
 	cmd.Stdout = &out
 	cmd.Stderr = &err_out
 
-	err := cmd.Run()
+	err = cmd.Run()
 	if err != nil {
-		return "", fmt.Errorf("%s", err.Error())
+		return out.String(), err_out.String(), err
 	}
 
-	stderr = nil
-	if len(err_out.String()) != 0 {
-		stderr = fmt.Errorf("%s", err_out.String())
-	}
-	return out.String(), stderr
+	return out.String(), err_out.String(), nil
 }

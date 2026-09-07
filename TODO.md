@@ -29,6 +29,7 @@
 
 ## Completed list
 
+- [x] Fixed bash/pwsh tool errors just printing `exit status 1` now give back stdout, std err and error if happened to the LLM
 - [x] Make stream listener to always listen and run new go routine whenever it returns
 - [x] Pass user cancel signal to bash tool, stream listener in TUI
 - [x] Fix - Deadline of 2/3 minutes is not just single stream but it seems the whole agent loop
