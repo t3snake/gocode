@@ -94,6 +94,7 @@ func promptLlm(prompt string, ctx context.Context, tui2llm chan Tui2Llm, llm2tui
 			if ctx.Err() != nil {
 				display_err.WriteString(ctx.Err().Error())
 			}
+
 			return ChatResult{
 				out:    display_out.String(),
 				err:    display_err.String(),
@@ -111,14 +112,12 @@ func promptLlm(prompt string, ctx context.Context, tui2llm chan Tui2Llm, llm2tui
 	}
 }
 
-func listenLlmStream(ctx context.Context, llm2tui chan Llm2Tui) tea.Cmd {
+func listenLlmStream(llm2tui chan Llm2Tui) tea.Cmd {
 	return func() tea.Msg {
-		select {
-		case stream_chunk := <-llm2tui:
-			return ChatStream{llm_msg: stream_chunk}
-		case <-ctx.Done():
-			// if context was stopped/cancelled for any reason, stop listening
-			return nil
+		stream_chunk := <-llm2tui
+
+		return ChatStream{
+			llm_msg: stream_chunk,
 		}
 	}
 }
@@ -253,7 +252,9 @@ func initialModel(llm2tui chan Llm2Tui, tui2llm chan Tui2Llm) ChatState {
 }
 
 func (c ChatState) Init() tea.Cmd {
-	return textarea.Blink
+	// start listener immediately
+	// startea.Batch(t listener imm, listenLlmStream(c.llm2tui))ediately
+	return tea.Batch(textarea.Blink, listenLlmStream(c.llm2tui))
 }
 
 func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -296,7 +297,7 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			c.current_message.display_text += msg.llm_msg.chunk_content
 		}
 
-		if msg.llm_msg.is_tool_call {
+		if msg.llm_msg.is_tool_call && c.tui2llm != nil {
 			// TODO(t3snake): implement tool call user interaction allow-reject
 			c.tui2llm <- Tui2Llm{
 				is_allowed:        true, // currently hardcoding to true, ideally have a simple button selection
@@ -304,11 +305,8 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		if msg.llm_msg.should_stop_listening {
-			cmd = nil
-		} else {
-			cmd = listenLlmStream(c.ctx, c.llm2tui)
-		}
+		// always have it active
+		cmd = listenLlmStream(c.llm2tui)
 
 		content := renderChatMessages(c)
 		c.viewport.SetContent(content)
@@ -335,6 +333,8 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		c.viewport.SetHeight(int(c.app_height) - c.prompt.Height() - 3)
 		content := renderChatMessages(c)
 		c.viewport.SetContent(content)
+
+		c.ctx_cancel(nil)
 
 		c.ctx = nil
 		c.ctx_cancel = nil
@@ -390,7 +390,6 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return c, tea.Batch(
 				c.spinner.Tick,
 				promptLlm(prompt, c.ctx, c.tui2llm, c.llm2tui),
-				listenLlmStream(c.ctx, c.llm2tui),
 			)
 
 		case "esc":

@@ -29,6 +29,7 @@
 
 ## Completed list
 
+- [x] Make stream listener to always listen and run new go routine whenever it returns
 - [x] Pass user cancel signal to bash tool, stream listener in TUI
 - [x] Fix - Deadline of 2/3 minutes is not just single stream but it seems the whole agent loop
 - [x] Pass context to bash tool so it can also be cancelled when parents get cancelled
