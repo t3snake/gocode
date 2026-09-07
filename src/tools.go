@@ -169,7 +169,7 @@ func writeFile(path, content string) (err error) {
 }
 
 func runBashRegistration() openai.ChatCompletionToolUnionParam {
-	description := "Execute given command"
+	description := "Run given command"
 
 	if runtime.GOOS == "windows" {
 		description += " in powershell (pwsh)"

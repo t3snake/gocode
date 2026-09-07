@@ -2,7 +2,6 @@
 
 ### NOW
 
-- [ ] Fix - Deadline of 2/3 minutes is not just single stream but it seems the whole agent loop.
 - [ ] Send history of chat ie. all agent loop mini session before appending new message. (needs map between openai and tui datatype)
 - [ ] Add tool call display in viewport
 - [ ] Just append to streaming message instead of re-rendering whole viewport
@@ -30,6 +29,8 @@
 
 ## Completed list
 
+- [x] Pass user cancel signal to bash tool, stream listener in TUI
+- [x] Fix - Deadline of 2/3 minutes is not just single stream but it seems the whole agent loop
 - [x] Pass context to bash tool so it can also be cancelled when parents get cancelled
 - [x] Fix bash tool calls (simple space splitting) now run bash or pwsh and pass the whole cmd as arg
 - [x] Markdown rendering library (Easy picking)
