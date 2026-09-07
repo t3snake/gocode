@@ -2,20 +2,23 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"strings"
 
 	// bubble tea tui fwk
 
+	tea "charm.land/bubbletea/v2"
+
 	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
-	tea "charm.land/bubbletea/v2"
+
 	"charm.land/glamour/v2"
 	"charm.land/glamour/v2/styles"
+
 	"charm.land/lipgloss/v2"
+
 	"github.com/t3snake/gocode/src/logger"
 )
 
@@ -108,11 +111,15 @@ func promptLlm(prompt string, ctx context.Context, tui2llm chan Tui2Llm, llm2tui
 	}
 }
 
-func listenLlmStream(llm2tui chan Llm2Tui) tea.Cmd {
+func listenLlmStream(ctx context.Context, llm2tui chan Llm2Tui) tea.Cmd {
 	return func() tea.Msg {
-		stream_chunk := <-llm2tui
-
-		return ChatStream{llm_msg: stream_chunk}
+		select {
+		case stream_chunk := <-llm2tui:
+			return ChatStream{llm_msg: stream_chunk}
+		case <-ctx.Done():
+			// if context was stopped/cancelled for any reason, stop listening
+			return nil
+		}
 	}
 }
 
@@ -283,7 +290,6 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseReleaseMsg:
 		// when mouse is "un"pressed / released, enable scrolling and disable text selection
 		c.is_selecting = false
-		tea.SetClipboard("selected text")
 
 	case ChatStream:
 		if msg.llm_msg.is_chunk {
@@ -301,7 +307,7 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.llm_msg.should_stop_listening {
 			cmd = nil
 		} else {
-			cmd = listenLlmStream(c.llm2tui)
+			cmd = listenLlmStream(c.ctx, c.llm2tui)
 		}
 
 		content := renderChatMessages(c)
@@ -322,7 +328,11 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		c.is_loading = false
 
-		c.viewport.SetHeight(int(c.app_height) - c.prompt.Height() - 2)
+		// while prompt is enabled, dont let viewport scroll (j, k vim binds)
+		c.viewport.KeyMap.Down.SetEnabled(false)
+		c.viewport.KeyMap.Up.SetEnabled(false)
+
+		c.viewport.SetHeight(int(c.app_height) - c.prompt.Height() - 3)
 		content := renderChatMessages(c)
 		c.viewport.SetContent(content)
 
@@ -367,6 +377,10 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				error_text:   "",
 			}
 
+			// while is loading, let viewport scroll (j, k vim binds)
+			c.viewport.KeyMap.Down.SetEnabled(true)
+			c.viewport.KeyMap.Up.SetEnabled(true)
+
 			c.viewport.SetHeight(int(c.app_height) - 3)
 			content := renderChatMessages(c)
 			c.viewport.SetContent(content)
@@ -376,17 +390,17 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return c, tea.Batch(
 				c.spinner.Tick,
 				promptLlm(prompt, c.ctx, c.tui2llm, c.llm2tui),
-				listenLlmStream(c.llm2tui),
+				listenLlmStream(c.ctx, c.llm2tui),
 			)
 
 		case "esc":
 			// TODO double escape for cancellation
 			if c.is_loading && c.ctx_cancel != nil {
-				c.ctx_cancel(errors.New("user-cancel"))
+				c.ctx_cancel(CancelSignalError)
 			}
 
 		default:
-			if !c.prompt.Focused() {
+			if !c.prompt.Focused() && !c.is_loading {
 				cmd = c.prompt.Focus()
 				cmds = append(cmds, cmd)
 			}
@@ -483,10 +497,6 @@ func renderChatMessages(c ChatState) (content string) {
 				logger.Error(err.Error())
 			}
 			content += glamout + postfix + "\n"
-
-			// content += c.agent_style.
-			// Width(msg_width).
-			// Render(msg.display_text+postfix) + "\n"
 		}
 	}
 
@@ -495,12 +505,9 @@ func renderChatMessages(c ChatState) (content string) {
 		glamout, err := glam.Render(c.current_message.display_text)
 		if err != nil {
 			logger.Error(err.Error())
+		} else {
+			content += glamout + "\n"
 		}
-
-		content += glamout + "\n"
-		// content += c.agent_style.
-		// 	Width(msg_width).
-		// 	Render(c.current_message.value) + "\n"
 	}
 
 	return content

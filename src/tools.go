@@ -13,10 +13,10 @@ import (
 )
 
 // Constants
-const ReadToolName = "ReadFile"
-const WriteToolName = "WriteFile"
+const ReadToolName = "read_file"
+const WriteToolName = "write_file"
 
-const RunCommandToolName = "RunShellCommand"
+const RunCommandToolName = "run_command_on_terminal"
 
 // Tool utils
 
@@ -169,7 +169,7 @@ func writeFile(path, content string) (err error) {
 }
 
 func runBashRegistration() openai.ChatCompletionToolUnionParam {
-	description := "Execute a shell command"
+	description := "Execute given command"
 
 	if runtime.GOOS == "windows" {
 		description += " in powershell (pwsh)"

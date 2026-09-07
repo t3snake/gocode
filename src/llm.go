@@ -3,10 +3,10 @@ package main
 import (
 	// openai api to communicate with LLM
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
-	"time"
 
 	"github.com/t3snake/gocode/src/logger"
 
@@ -29,10 +29,6 @@ type Messages struct {
 func runAgentLoop(client openai.Client, parent_ctx context.Context, prompt string, writers Writers, llm2tui chan Llm2Tui, tui2llm chan Tui2Llm) (exitcode int) {
 	var err error
 
-	// TODO does stream take 2 minute for overall stream or for each stream event? could be less
-	ctx, cancel := context.WithTimeout(parent_ctx, 2*time.Minute)
-	defer cancel()
-
 	// messages array that maintains chat history
 	// TODO add developer prompt, customizable?
 	messages := make([]openai.ChatCompletionMessageParamUnion, 100)
@@ -51,6 +47,11 @@ func runAgentLoop(client openai.Client, parent_ctx context.Context, prompt strin
 			fmt.Println(writers.err, message)
 			return 1
 		}
+
+		// Timeout is only for single stream in the agent loop
+		ctx, cancel := context.WithTimeout(parent_ctx, StreamTimeout)
+
+		// Dont defer cancellation, cancel explicitly to mark it done
 
 		stream := client.Chat.Completions.NewStreaming(ctx,
 			openai.ChatCompletionNewParams{
@@ -145,8 +146,24 @@ func runAgentLoop(client openai.Client, parent_ctx context.Context, prompt strin
 
 		if err := stream.Err(); err != nil {
 			logger.Error(err.Error())
-			fmt.Fprintf(writers.err, "error: %v\n", err)
+			fmt.Fprintf(writers.err, "%v\n", err)
 			return 1
+		}
+
+		ctxErr := ctx.Err()
+		cancel()
+
+		switch {
+		case errors.Is(ctxErr, context.DeadlineExceeded):
+			timeout := "stream timed out (> 3 minutes)"
+			logger.Error(timeout)
+			fmt.Fprintf(writers.err, "%s\n", timeout)
+			return 1
+
+		case errors.Is(ctxErr, CancelSignalError):
+			logger.Error(ctxErr.Error())
+			fmt.Fprintf(writers.err, "%s\n", ctxErr.Error())
+
 		}
 
 		if len(acc.Choices) == 0 {
@@ -191,7 +208,27 @@ func runAgentLoop(client openai.Client, parent_ctx context.Context, prompt strin
 					}
 				}
 
-				results[idx], err = ExecuteToolCall(tool_call, ctx)
+				tool_ctx, cancel_tool := context.WithTimeout(parent_ctx, ToolExecutionTimeout)
+
+				results[idx], err = ExecuteToolCall(tool_call, tool_ctx)
+
+				ctxErr = tool_ctx.Err()
+				cancel_tool()
+
+				switch {
+				case errors.Is(ctxErr, context.DeadlineExceeded):
+					timeout := "tool execution timed out (> 5 minutes)"
+					logger.Error(timeout)
+					fmt.Fprintf(writers.err, "%s\n", timeout)
+					return 1
+
+				case errors.Is(ctxErr, CancelSignalError):
+					logger.Error(ctxErr.Error())
+					fmt.Fprintf(writers.err, "Note: execution of tool %s aborted due to interruption", tool_call.Function.Name)
+					return 1
+
+				}
+
 				if err != nil {
 					err_msg := fmt.Sprintf("Error during tool call: %s", err.Error())
 					logger.Error(err_msg)
