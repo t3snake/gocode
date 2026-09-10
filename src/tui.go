@@ -288,6 +288,9 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Opencode and crush get around it by essentially doing this: while mouse is pressed, disable scrolling but enable text selection
 		c.is_selecting = true
 
+		// c.prompt.BeginSelection(msg.X, msg.Y)
+		// c.prompt.Sel
+
 	case tea.MouseReleaseMsg:
 		// when mouse is "un"pressed / released, enable scrolling and disable text selection
 		c.is_selecting = false
@@ -414,8 +417,10 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	c.viewport, cmd = c.viewport.Update(msg)
 	cmds = append(cmds, cmd)
 
-	c.prompt, cmd = c.prompt.Update(msg)
-	cmds = append(cmds, cmd)
+	if !c.is_loading {
+		c.prompt, cmd = c.prompt.Update(msg)
+		cmds = append(cmds, cmd)
+	}
 
 	return c, tea.Batch(cmds...)
 }
@@ -448,11 +453,7 @@ func (c ChatState) View() tea.View {
 	v.BackgroundColor = c.theme.TerminalBackground
 	v.ForegroundColor = c.theme.Text
 	v.AltScreen = true
-	if c.is_selecting {
-		v.MouseMode = tea.MouseModeNone
-	} else {
-		v.MouseMode = tea.MouseModeCellMotion
-	}
+	v.MouseMode = tea.MouseModeCellMotion
 
 	cr := c.prompt.Cursor()
 	if cr != nil {
