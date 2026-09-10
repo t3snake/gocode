@@ -5,11 +5,12 @@
 - [ ] Send history of chat ie. all agent loop mini session before appending new message. (needs map between openai and tui datatype)
 - [ ] Add tool call display in viewport
 - [ ] Just append to streaming message instead of re-rendering whole viewport
-- [ ] Add changing log levels during runtime (hide/show tool output option in settings)
+- [ ] Fix selections - move to native selections (figure out text, figure out background and mouse position etc), cant turn back mouse mode once disabled
 
 ### Very soon
 
 - [ ] Add either cancel recovery -> recovers prompt in promptbox on cancellation or better up for history of prompts
+- [ ] Add startup settings as json config initially, then move to settings menu
 - [ ] Add tool call prompt for user
 - [ ] Add tokens, context window info
 - [ ] /new to clear context (currently always clear context)
@@ -23,6 +24,7 @@
 - [ ] Delete specific context from message history - has to be assistant + user message (2 consecutive assistant messages will fail)
 - [ ] Chat navigation using arrows/vim bindings
 - [ ] Add settings, dialogs ?
+- [ ] Add changing log levels during runtime (hide/show tool output option in settings)
 - [ ] Help line for all views
 - [ ] Status line with - Model, token usage, context size
 - [ ] Start a new process without polluting main context for some tasks like readFile
