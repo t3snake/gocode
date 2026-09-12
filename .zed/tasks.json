@@ -1,0 +1,8 @@
+[
+  {
+    "label": "Run Unit Tests",
+    "command": "go",
+    "args": ["test", "-v", "./..."],
+    "cwd": "$ZED_WORKTREE_ROOT"
+  }
+]
