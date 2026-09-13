@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/t3snake/gocode/src/chatcompletion"
+	"github.com/t3snake/gocode/src/core"
 	"github.com/t3snake/gocode/src/logger"
+	"github.com/t3snake/gocode/src/tui"
 )
 
 func main() {
@@ -36,17 +39,16 @@ func main() {
 			panic("Prompt must not be empty")
 		}
 
-		client := getClient()
+		client := chatcompletion.GetClient()
 
 		logger.Info("gocode started in prompt mode.")
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		retcode := runAgentLoop(client, ctx, prompt, Writers{
-			os.Stdout, // just print to stdout, (might also log in prompt mode)
-			os.Stderr, // just print to stderr, (might also log in prompt mode)
-			true,      // suppress exclusive logs, just have the ai output or err, maybe 'showLogs' flag enables logs.
+		retcode := chatcompletion.RunAgentLoop(client, ctx, prompt, core.Writers{
+			Out: os.Stdout, // just print to stdout, (might also log in prompt mode)
+			Err: os.Stderr, // just print to stderr, (might also log in prompt mode)
 		}, nil, nil)
 
 		os.Exit(retcode)
@@ -55,5 +57,5 @@ func main() {
 	logger.Info("gocode started in TUI mode.")
 
 	// else start TUI
-	StartTUI()
+	tui.StartTUI()
 }

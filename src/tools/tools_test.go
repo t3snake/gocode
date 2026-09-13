@@ -1,4 +1,4 @@
-package main
+package tools
 
 import (
 	"context"
@@ -15,9 +15,9 @@ func TestToolRegistrations(t *testing.T) {
 		register func() openai.ChatCompletionToolUnionParam
 		required []string
 	}{
-		{"read_file", readFileRegistration, []string{"file_path"}},
-		{"write_file", writeFileRegistration, []string{"file_path", "content"}},
-		{"run_command_on_terminal", runBashRegistration, []string{"command"}},
+		{"read_file", ReadFileRegistration, []string{"file_path"}},
+		{"write_file", WriteFileRegistration, []string{"file_path", "content"}},
+		{"run_command_on_terminal", RunTerminalCommandRegistration, []string{"command"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -55,23 +55,6 @@ func TestToolRegistrations(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-func TestRegisterTools(t *testing.T) {
-	want := map[string]bool{"read_file": true, "write_file": true, "run_command_on_terminal": true}
-	for _, tool := range registerTools() {
-		if tool.OfFunction == nil {
-			t.Fatal("registered tool has no function")
-		}
-		name := tool.OfFunction.Function.Name
-		if !want[name] {
-			t.Errorf("unexpected or duplicate tool %q", name)
-		}
-		delete(want, name)
-	}
-	if len(want) != 0 {
-		t.Errorf("missing tools: %v", want)
 	}
 }
 

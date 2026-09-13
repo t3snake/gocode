@@ -1,4 +1,4 @@
-package main
+package chatcompletion
 
 import (
 	"encoding/json"

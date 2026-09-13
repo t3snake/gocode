@@ -15,8 +15,6 @@
 - [ ] Add tokens, context window info
 - [ ] /new to clear context (currently always clear context)
 - [ ] Save file for sessions
-- [ ] Refactor tui and llm into separate packages
-- [ ] Refactor tools into separate package (map per toolname to get everything?)
 - [ ] Add more themes
 
 ### Later
@@ -31,6 +29,8 @@
 
 ## Completed list
 
+- [x] Refactor tui and llm into separate packages
+- [x] Refactor tools into separate package (map per toolname to get everything?)
 - [x] Fixed bash/pwsh tool errors just printing `exit status 1` now give back stdout, std err and error if happened to the LLM
 - [x] Make stream listener to always listen and run new go routine whenever it returns
 - [x] Pass user cancel signal to bash tool, stream listener in TUI

@@ -1,4 +1,4 @@
-package main
+package tui
 
 import (
 	"context"
@@ -19,13 +19,15 @@ import (
 
 	"charm.land/lipgloss/v2"
 
+	"github.com/t3snake/gocode/src/chatcompletion"
+	"github.com/t3snake/gocode/src/core"
 	"github.com/t3snake/gocode/src/logger"
 )
 
 // Starts and runs a bubbletea TUI program
 func StartTUI() {
-	tui2llm := make(chan Tui2Llm)
-	llm2tui := make(chan Llm2Tui)
+	tui2llm := make(chan core.Tui2Llm)
+	llm2tui := make(chan core.Llm2Tui)
 
 	p := tea.NewProgram(initialModel(llm2tui, tui2llm), tea.WithFPS(120))
 	if _, err := p.Run(); err != nil {
@@ -36,33 +38,6 @@ func StartTUI() {
 
 // ----- Bridge between TUI and calls to LLM -----
 
-type Llm2Tui struct {
-	// for tool call permission to tui
-
-	is_tool_call bool   // Reports whether LLM is requesting a tool call
-	tool_name    string // tool name, only guaranteed if [Llm2Tui.is_tool_call] is true
-
-	// TODO(t3snake): parse and make map[string]string
-	params string // tool params, only guaranteed if [Llm2Tui.is_tool_call] is true
-
-	// stream thinking/content
-
-	is_chunk        bool // Reports whether a chunk was streamed
-	is_last_content bool // Reports whether the last chunk was just streamed. Only valid if [Llm2Tui.is_chunk] is true. Not used currently, TODO evaluate
-	chunk_content   string
-
-	is_usage_chunk bool // in streaming, the very last chunk when usage is enabled, just sends the token_spent
-	token_spent    int  // Reports how many tokens were spent so far in the agent loop.
-
-	should_stop_listening bool // tui can safely stop listening when this is true
-}
-
-type Tui2Llm struct {
-	// allow or reject?
-	is_allowed        bool   // Reports whether user allowed the tool use, either through always allow or setting allow.
-	adjustment_prompt string // only used to change course, if [Tui2Llm.is_allowed] is false
-}
-
 type ChatResult struct {
 	out    string
 	err    string
@@ -70,11 +45,11 @@ type ChatResult struct {
 }
 
 type ChatStream struct {
-	llm_msg Llm2Tui
+	llm_msg core.Llm2Tui
 }
 
 // Runs agent loop using openai chat completion API
-func promptLlm(prompt string, ctx context.Context, tui2llm chan Tui2Llm, llm2tui chan Llm2Tui) tea.Cmd {
+func promptLlm(prompt string, ctx context.Context, tui2llm chan core.Tui2Llm, llm2tui chan core.Llm2Tui) tea.Cmd {
 	// tea.Cmd can only take fn with empty params so return a function with empty params and use closure
 	// This function runs as a goroutine (handled by bubbletea)
 	// The return is any type, we have to intercept our type in Update function
@@ -82,11 +57,11 @@ func promptLlm(prompt string, ctx context.Context, tui2llm chan Tui2Llm, llm2tui
 		var display_out strings.Builder
 		var display_err strings.Builder
 
-		client := getClient()
+		client := chatcompletion.GetClient()
 
-		retcode := runAgentLoop(client, ctx, prompt, Writers{
-			out: &display_out,
-			err: &display_err,
+		retcode := chatcompletion.RunAgentLoop(client, ctx, prompt, core.Writers{
+			Out: &display_out,
+			Err: &display_err,
 		}, llm2tui, tui2llm)
 
 		select {
@@ -112,7 +87,7 @@ func promptLlm(prompt string, ctx context.Context, tui2llm chan Tui2Llm, llm2tui
 	}
 }
 
-func listenLlmStream(llm2tui chan Llm2Tui) tea.Cmd {
+func listenLlmStream(llm2tui chan core.Llm2Tui) tea.Cmd {
 	return func() tea.Msg {
 		stream_chunk := <-llm2tui
 
@@ -171,8 +146,8 @@ type ChatState struct {
 
 	// Channel for communication between TUI and LLM goroutines. For streaming and toolcall UX
 
-	tui2llm    chan Tui2Llm
-	llm2tui    chan Llm2Tui
+	tui2llm    chan core.Tui2Llm
+	llm2tui    chan core.Llm2Tui
 	ctx        context.Context
 	ctx_cancel context.CancelCauseFunc
 
@@ -183,7 +158,7 @@ type ChatState struct {
 	is_selecting bool
 }
 
-func initialModel(llm2tui chan Llm2Tui, tui2llm chan Tui2Llm) ChatState {
+func initialModel(llm2tui chan core.Llm2Tui, tui2llm chan core.Tui2Llm) ChatState {
 	theme := catpuccinMacchiatoTheme
 
 	ta := textarea.New()
@@ -296,15 +271,15 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		c.is_selecting = false
 
 	case ChatStream:
-		if msg.llm_msg.is_chunk {
-			c.current_message.display_text += msg.llm_msg.chunk_content
+		if msg.llm_msg.IsChunk {
+			c.current_message.display_text += msg.llm_msg.ChunkContent
 		}
 
-		if msg.llm_msg.is_tool_call && c.tui2llm != nil {
+		if msg.llm_msg.IsToolCall && c.tui2llm != nil {
 			// TODO(t3snake): implement tool call user interaction allow-reject
-			c.tui2llm <- Tui2Llm{
-				is_allowed:        true, // currently hardcoding to true, ideally have a simple button selection
-				adjustment_prompt: "",   // UX?
+			c.tui2llm <- core.Tui2Llm{
+				IsAllowed:        true, // currently hardcoding to true, ideally have a simple button selection
+				AdjustmentPrompt: "",   // UX?
 			}
 		}
 
@@ -398,7 +373,7 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "esc":
 			// TODO double escape for cancellation
 			if c.is_loading && c.ctx_cancel != nil {
-				c.ctx_cancel(CancelSignalError)
+				c.ctx_cancel(core.CancelSignalError)
 			}
 
 		default:

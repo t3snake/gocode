@@ -1,4 +1,4 @@
-package main
+package tools
 
 import (
 	"context"
@@ -106,7 +106,7 @@ func ExecuteToolCall(toolcall openai.ChatCompletionMessageToolCallUnion, ctx con
 }
 
 // Built in tool functions and registrations
-func readFileRegistration() openai.ChatCompletionToolUnionParam {
+func ReadFileRegistration() openai.ChatCompletionToolUnionParam {
 	return openai.ChatCompletionToolUnionParam{
 		OfFunction: &openai.ChatCompletionFunctionToolParam{
 			Function: openai.FunctionDefinitionParam{
@@ -138,7 +138,7 @@ func readFile(path string) (content string, err error) {
 	return
 }
 
-func writeFileRegistration() openai.ChatCompletionToolUnionParam {
+func WriteFileRegistration() openai.ChatCompletionToolUnionParam {
 	return openai.ChatCompletionToolUnionParam{
 		OfFunction: &openai.ChatCompletionFunctionToolParam{
 			Function: openai.FunctionDefinitionParam{
@@ -168,7 +168,7 @@ func writeFile(path, content string) (err error) {
 	return os.WriteFile(path, []byte(content), 0666)
 }
 
-func runBashRegistration() openai.ChatCompletionToolUnionParam {
+func RunTerminalCommandRegistration() openai.ChatCompletionToolUnionParam {
 	description := "Run given command"
 
 	if runtime.GOOS == "windows" {

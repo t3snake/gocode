@@ -1,32 +1,21 @@
-package main
+package chatcompletion
 
 import (
 	// openai api to communicate with LLM
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 
+	"github.com/t3snake/gocode/src/core"
 	"github.com/t3snake/gocode/src/logger"
+	"github.com/t3snake/gocode/src/tools"
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 )
 
-// Can be writing to stdout/stderr or files as logs
-// All printfs are written to logs, but specific logging is only written to log files
-// This is helpful in prompt mode on terminal, which usually would not show logs on the terminal
-type Writers struct {
-	out          io.Writer
-	err          io.Writer
-	suppressLogs bool
-}
-
-type Messages struct {
-}
-
-func runAgentLoop(client openai.Client, parent_ctx context.Context, prompt string, writers Writers, llm2tui chan Llm2Tui, tui2llm chan Tui2Llm) (exitcode int) {
+func RunAgentLoop(client openai.Client, parent_ctx context.Context, prompt string, writers core.Writers, llm2tui chan core.Llm2Tui, tui2llm chan core.Tui2Llm) (exitcode int) {
 	var err error
 
 	// messages array that maintains chat history
@@ -44,12 +33,12 @@ func runAgentLoop(client openai.Client, parent_ctx context.Context, prompt strin
 		if msg_len >= 100 {
 			message := "Message count reached >= 100. Time to increase array size."
 			logger.Error(message)
-			fmt.Println(writers.err, message)
+			fmt.Println(writers.Err, message)
 			return 1
 		}
 
 		// Timeout is only for single stream in the agent loop
-		ctx, cancel := context.WithTimeout(parent_ctx, StreamTimeout)
+		ctx, cancel := context.WithTimeout(parent_ctx, core.StreamTimeout)
 
 		// Dont defer cancellation, cancel explicitly to mark it done
 
@@ -76,17 +65,17 @@ func runAgentLoop(client openai.Client, parent_ctx context.Context, prompt strin
 			if len(chunk.Choices) == 0 {
 				// NOTE last usage chunk that comes with stream option "include usage". Add to accumulator.
 				if llm2tui != nil {
-					llm2tui <- Llm2Tui{
-						is_tool_call: false,
-						tool_name:    "",
-						params:       "",
+					llm2tui <- core.Llm2Tui{
+						IsToolCall: false,
+						ToolName:   "",
+						Params:     "",
 
-						is_chunk:        false,
-						is_last_content: false,
-						chunk_content:   "",
+						IsChunk:      false,
+						IsLastChunk:  false,
+						ChunkContent: "",
 
-						is_usage_chunk: true,
-						token_spent:    int(acc.Usage.TotalTokens),
+						IsUsageChunk: true,
+						TokenSpent:   int(acc.Usage.TotalTokens),
 					}
 
 				}
@@ -97,17 +86,17 @@ func runAgentLoop(client openai.Client, parent_ctx context.Context, prompt strin
 			if _, ok := acc.JustFinishedContent(); ok {
 				// NOTE seems this is not the last chunk sent, there is one last chunk sent without choices and just Usage data
 				if llm2tui != nil {
-					llm2tui <- Llm2Tui{
-						is_tool_call: false,
-						tool_name:    "",
-						params:       "",
+					llm2tui <- core.Llm2Tui{
+						IsToolCall: false,
+						ToolName:   "",
+						Params:     "",
 
-						is_chunk:        true,
-						is_last_content: true,
-						chunk_content:   chunk.Choices[0].Delta.Content,
+						IsChunk:      true,
+						IsLastChunk:  true,
+						ChunkContent: chunk.Choices[0].Delta.Content,
 
-						is_usage_chunk: false,
-						token_spent:    0,
+						IsUsageChunk: false,
+						TokenSpent:   0,
 					}
 				}
 				continue
@@ -116,37 +105,37 @@ func runAgentLoop(client openai.Client, parent_ctx context.Context, prompt strin
 			if tool, ok := acc.JustFinishedToolCall(); ok {
 				tool_call := fmt.Sprintf("Tool call requested - %s (%s)", tool.Name, tool.Arguments)
 				logger.Info(tool_call)
-				fmt.Fprintln(writers.out, tool_call)
+				fmt.Fprintln(writers.Out, tool_call)
 			}
 
 			if refusal, ok := acc.JustFinishedRefusal(); ok {
 				refusal_out := fmt.Sprintf("Refusal (LLM): %s", refusal)
-				fmt.Fprintln(writers.err, refusal_out)
+				fmt.Fprintln(writers.Err, refusal_out)
 				return 1
 			}
 
 			if llm2tui != nil {
-				llm2tui <- Llm2Tui{
-					is_tool_call: false,
-					tool_name:    "",
-					params:       "",
+				llm2tui <- core.Llm2Tui{
+					IsToolCall: false,
+					ToolName:   "",
+					Params:     "",
 
-					is_chunk:        true,
-					is_last_content: false,
-					chunk_content:   chunk.Choices[0].Delta.Content,
+					IsChunk:      true,
+					IsLastChunk:  false,
+					ChunkContent: chunk.Choices[0].Delta.Content,
 
-					is_usage_chunk: false,
-					token_spent:    0,
+					IsUsageChunk: false,
+					TokenSpent:   0,
 				}
 			} else {
 				// print chunk (helpful for non tui streaming)
-				fmt.Fprintf(writers.out, "%s", chunk.Choices[0].Delta.Content)
+				fmt.Fprintf(writers.Out, "%s", chunk.Choices[0].Delta.Content)
 			}
 		}
 
 		if err := stream.Err(); err != nil {
 			logger.Error(err.Error())
-			fmt.Fprintf(writers.err, "%v\n", err)
+			fmt.Fprintf(writers.Err, "%v\n", err)
 			return 1
 		}
 
@@ -157,18 +146,18 @@ func runAgentLoop(client openai.Client, parent_ctx context.Context, prompt strin
 		case errors.Is(ctxErr, context.DeadlineExceeded):
 			timeout := "stream timed out (> 3 minutes)"
 			logger.Error(timeout)
-			fmt.Fprintf(writers.err, "%s\n", timeout)
+			fmt.Fprintf(writers.Err, "%s\n", timeout)
 			return 1
 
-		case errors.Is(ctxErr, CancelSignalError):
+		case errors.Is(ctxErr, core.CancelSignalError):
 			logger.Error(ctxErr.Error())
-			fmt.Fprintf(writers.err, "%s\n", ctxErr.Error())
+			fmt.Fprintf(writers.Err, "%s\n", ctxErr.Error())
 
 		}
 
 		if len(acc.Choices) == 0 {
 			logger.Error("No choices in LLM response.")
-			fmt.Fprintln(writers.err, "Error: No choices in LLM response")
+			fmt.Fprintln(writers.Err, "Error: No choices in LLM response")
 			return 1
 		}
 
@@ -184,33 +173,33 @@ func runAgentLoop(client openai.Client, parent_ctx context.Context, prompt strin
 			for idx, tool_call := range tool_calls {
 				// TODO should be blocked until user gives permission
 				if llm2tui != nil {
-					llm2tui <- Llm2Tui{
-						is_tool_call: true,
-						tool_name:    tool_call.AsFunction().Function.Name,
-						params:       tool_call.AsFunction().Function.Arguments,
+					llm2tui <- core.Llm2Tui{
+						IsToolCall: true,
+						ToolName:   tool_call.AsFunction().Function.Name,
+						Params:     tool_call.AsFunction().Function.Arguments,
 
-						is_chunk:        false,
-						is_last_content: false,
-						chunk_content:   "",
+						IsChunk:      false,
+						IsLastChunk:  false,
+						ChunkContent: "",
 
-						token_spent: int(acc.Usage.TotalTokens),
+						TokenSpent: int(acc.Usage.TotalTokens),
 					}
 				}
 
 				if tui2llm != nil {
 					user_action := <-tui2llm
 
-					if !user_action.is_allowed {
+					if !user_action.IsAllowed {
 						// TODO send back to llm or return ?
 						logger.Info("User did not allow tool call")
-						fmt.Fprintf(writers.err, "User did not allow tool call")
+						fmt.Fprintf(writers.Err, "User did not allow tool call")
 						return 1
 					}
 				}
 
-				tool_ctx, cancel_tool := context.WithTimeout(parent_ctx, ToolExecutionTimeout)
+				tool_ctx, cancel_tool := context.WithTimeout(parent_ctx, core.ToolExecutionTimeout)
 
-				results[idx], err = ExecuteToolCall(tool_call, tool_ctx)
+				results[idx], err = tools.ExecuteToolCall(tool_call, tool_ctx)
 
 				ctxErr = tool_ctx.Err()
 				cancel_tool()
@@ -219,12 +208,12 @@ func runAgentLoop(client openai.Client, parent_ctx context.Context, prompt strin
 				case errors.Is(ctxErr, context.DeadlineExceeded):
 					timeout := "tool execution timed out (> 5 minutes)"
 					logger.Error(timeout)
-					fmt.Fprintf(writers.err, "%s\n", timeout)
+					fmt.Fprintf(writers.Err, "%s\n", timeout)
 					return 1
 
-				case errors.Is(ctxErr, CancelSignalError):
+				case errors.Is(ctxErr, core.CancelSignalError):
 					logger.Error(ctxErr.Error())
-					fmt.Fprintf(writers.err, "Note: execution of tool %s aborted due to interruption", tool_call.Function.Name)
+					fmt.Fprintf(writers.Err, "Note: execution of tool %s aborted due to interruption", tool_call.Function.Name)
 					return 1
 
 				}
@@ -232,7 +221,7 @@ func runAgentLoop(client openai.Client, parent_ctx context.Context, prompt strin
 				if err != nil {
 					err_msg := fmt.Sprintf("Error during tool call: %s", err.Error())
 					logger.Error(err_msg)
-					fmt.Fprintf(writers.err, "%s\n", err_msg)
+					fmt.Fprintf(writers.Err, "%s\n", err_msg)
 
 					messages[msg_len] = createToolMessage(tool_call.ID, err_msg)
 					msg_len++
@@ -253,7 +242,7 @@ func runAgentLoop(client openai.Client, parent_ctx context.Context, prompt strin
 				tool_log := fmt.Sprintf("Tool info\nname: %s\nparams: %s\nresult: %s\n", tool_call.Function.Name, tool_call.Function.Arguments, tool_result)
 
 				logger.Info(tool_log)
-				fmt.Fprintf(writers.err, "===== debug info =====\n%s===== END =====\n", tool_log)
+				fmt.Fprintf(writers.Err, "===== debug info =====\n%s===== END =====\n", tool_log)
 
 				messages[msg_len] = createToolMessage(tool_call.ID, results[idx])
 				msg_len++
@@ -262,23 +251,23 @@ func runAgentLoop(client openai.Client, parent_ctx context.Context, prompt strin
 			// stream already wrote everything.
 			if llm2tui != nil {
 				// send stop listening signal
-				llm2tui <- Llm2Tui{
-					is_tool_call: false,
-					tool_name:    "",
-					params:       "",
+				llm2tui <- core.Llm2Tui{
+					IsToolCall: false,
+					ToolName:   "",
+					Params:     "",
 
-					is_chunk:        false,
-					is_last_content: false,
-					chunk_content:   "",
+					IsChunk:      false,
+					IsLastChunk:  false,
+					ChunkContent: "",
 
-					is_usage_chunk: false,
-					token_spent:    0,
+					IsUsageChunk: false,
+					TokenSpent:   0,
 
-					should_stop_listening: true,
+					ShouldStopListening: true,
 				}
 
 			}
-			fmt.Fprintln(writers.out, "")
+			fmt.Fprintln(writers.Out, "")
 			break
 		}
 	}
@@ -286,7 +275,7 @@ func runAgentLoop(client openai.Client, parent_ctx context.Context, prompt strin
 	return 0
 }
 
-func getClient() openai.Client {
+func GetClient() openai.Client {
 	apiKey := os.Getenv("OPENROUTER_API_KEY")
 	baseUrl := os.Getenv("OPENROUTER_BASE_URL")
 	if baseUrl == "" {
@@ -305,9 +294,9 @@ func getClient() openai.Client {
 // Register list of tools to be advertised to the LLM
 func registerTools() []openai.ChatCompletionToolUnionParam {
 	return []openai.ChatCompletionToolUnionParam{
-		readFileRegistration(),
-		writeFileRegistration(),
-		runBashRegistration(),
+		tools.ReadFileRegistration(),
+		tools.WriteFileRegistration(),
+		tools.RunTerminalCommandRegistration(),
 	}
 }
 
