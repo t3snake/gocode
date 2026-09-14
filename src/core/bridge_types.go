@@ -36,3 +36,21 @@ type Writers struct {
 	Out io.Writer
 	Err io.Writer
 }
+
+//
+type Role uint8
+
+const (
+	USER Role = iota
+	LLM
+	TOOL
+)
+
+// Struct representing user and chat-agent/llm messages
+type GocodeMessage struct {
+	MsgRole     Role   // 0 USER, 1 LLM, 2 TOOL
+	Id          uint8  // unique identifier, currently only 256 messages possible
+	DisplayText string // message
+	IsError     bool
+	ErrorText   string // non null and non empty when is_err is true
+}

@@ -46,10 +46,19 @@ func main() {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		retcode := chatcompletion.RunAgentLoop(client, ctx, prompt, core.Writers{
-			Out: os.Stdout, // just print to stdout, (might also log in prompt mode)
-			Err: os.Stderr, // just print to stderr, (might also log in prompt mode)
-		}, nil, nil)
+		agent_loop_params := chatcompletion.AgentLoopParams{
+			Client:     client,
+			Ctx:        ctx,
+			UserPrompt: prompt,
+			Writers: core.Writers{
+				Out: os.Stdout,
+				Err: os.Stderr,
+			},
+			LlmToTui: nil,
+			TuiToLlm: nil,
+		}
+
+		retcode := chatcompletion.RunAgentLoop(agent_loop_params)
 
 		os.Exit(retcode)
 	}

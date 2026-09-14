@@ -59,17 +59,22 @@ func promptLlm(prompt string, ctx context.Context, tui2llm chan core.Tui2Llm, ll
 
 		client := chatcompletion.GetClient()
 
-		retcode := chatcompletion.RunAgentLoop(client, ctx, prompt, core.Writers{
-			Out: &display_out,
-			Err: &display_err,
-		}, llm2tui, tui2llm)
+		agent_loop_params := chatcompletion.AgentLoopParams{
+			Client:     client,
+			Ctx:        ctx,
+			UserPrompt: prompt,
+			Writers: core.Writers{
+				Out: &display_out,
+				Err: &display_err,
+			},
+			LlmToTui: llm2tui,
+			TuiToLlm: tui2llm,
+		}
+
+		retcode := chatcompletion.RunAgentLoop(agent_loop_params)
 
 		select {
 		case <-ctx.Done():
-			if ctx.Err() != nil {
-				display_err.WriteString(ctx.Err().Error())
-			}
-
 			return ChatResult{
 				out:    display_out.String(),
 				err:    display_err.String(),
@@ -99,23 +104,6 @@ func listenLlmStream(llm2tui chan core.Llm2Tui) tea.Cmd {
 
 // ----- Main TUI Model Update View logic -----
 
-type Role uint8
-
-const (
-	USER Role = iota
-	LLM  Role = iota
-	TOOL Role = iota
-)
-
-// Struct representing user and chat-agent/llm messages
-type Message struct {
-	role         Role // 0 USER, 1 LLM, 2 TOOL
-	is_err       bool
-	id           uint8  // unique identifier, currently only 256 messages possible
-	display_text string // message
-	error_text   string // non null and non empty when is_err is true
-}
-
 // TUI main state
 type ChatState struct {
 	// window dimensions
@@ -130,8 +118,8 @@ type ChatState struct {
 
 	// messages (history) and currently streaming message
 
-	messages        []Message
-	current_message Message
+	messages        []core.GocodeMessage
+	current_message core.GocodeMessage
 	token_spend     int
 
 	// loading state
@@ -200,13 +188,13 @@ func initialModel(llm2tui chan core.Llm2Tui, tui2llm chan core.Tui2Llm) ChatStat
 		prompt:   ta,
 		viewport: vp,
 
-		messages: []Message{},
-		current_message: Message{
-			role:         LLM,
-			is_err:       false,
-			id:           5,
-			display_text: "",
-			error_text:   "",
+		messages: []core.GocodeMessage{},
+		current_message: core.GocodeMessage{
+			MsgRole:     core.LLM,
+			IsError:     false,
+			Id:          5,
+			DisplayText: "",
+			ErrorText:   "",
 		},
 
 		is_loading: false,
@@ -272,7 +260,12 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ChatStream:
 		if msg.llm_msg.IsChunk {
-			c.current_message.display_text += msg.llm_msg.ChunkContent
+			c.current_message.DisplayText += msg.llm_msg.ChunkContent
+
+			// only rerender when there is a chunk content
+			content := renderChatMessages(c)
+			c.viewport.SetContent(content)
+			c.viewport.GotoBottom()
 		}
 
 		if msg.llm_msg.IsToolCall && c.tui2llm != nil {
@@ -283,24 +276,20 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		// always have it active
+		// always have it active, by reopening listener immediately when returned
 		cmd = listenLlmStream(c.llm2tui)
-
-		content := renderChatMessages(c)
-		c.viewport.SetContent(content)
-		c.viewport.GotoBottom()
 
 		return c, cmd
 
 	case ChatResult:
-		c.current_message.is_err = msg.is_err
-		c.current_message.error_text = msg.err
+		c.current_message.IsError = msg.is_err
+		c.current_message.ErrorText = msg.err
 
 		c.messages = append(c.messages, c.current_message)
 
-		c.current_message.display_text = ""
-		c.current_message.error_text = ""
-		c.current_message.is_err = false
+		c.current_message.DisplayText = ""
+		c.current_message.ErrorText = ""
+		c.current_message.IsError = false
 
 		c.is_loading = false
 
@@ -311,6 +300,7 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		c.viewport.SetHeight(int(c.app_height) - c.prompt.Height() - 3)
 		content := renderChatMessages(c)
 		c.viewport.SetContent(content)
+		c.viewport.GotoBottom()
 
 		c.ctx_cancel(nil)
 
@@ -338,21 +328,21 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			c.is_loading = true
 			c.prompt.Reset()
 			c.messages = append(c.messages,
-				Message{
-					role:         USER,
-					id:           uint8(len(c.messages)),
-					display_text: prompt,
-					is_err:       false,
-					error_text:   "",
+				core.GocodeMessage{
+					MsgRole:     core.USER,
+					Id:          uint8(len(c.messages)),
+					DisplayText: prompt,
+					IsError:     false,
+					ErrorText:   "",
 				},
 			)
 
-			c.current_message = Message{
-				role:         LLM,
-				id:           uint8(len(c.messages)),
-				display_text: "",
-				is_err:       false,
-				error_text:   "",
+			c.current_message = core.GocodeMessage{
+				MsgRole:     core.LLM,
+				Id:          uint8(len(c.messages)),
+				DisplayText: "",
+				IsError:     false,
+				ErrorText:   "",
 			}
 
 			// while is loading, let viewport scroll (j, k vim binds)
@@ -362,6 +352,7 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			c.viewport.SetHeight(int(c.app_height) - 3)
 			content := renderChatMessages(c)
 			c.viewport.SetContent(content)
+			c.viewport.GotoBottom()
 
 			c.ctx, c.ctx_cancel = context.WithCancelCause(context.Background())
 
@@ -453,21 +444,21 @@ func renderChatMessages(c ChatState) (content string) {
 	)
 
 	for _, msg := range c.messages {
-		switch msg.role {
-		case USER:
+		switch msg.MsgRole {
+		case core.USER:
 			content += c.user_style.
 				Width(msg_width).
-				Render(msg.display_text) + "\n"
+				Render(msg.DisplayText) + "\n"
 
-		case LLM:
+		case core.LLM:
 			postfix := ""
-			if msg.is_err {
+			if msg.IsError {
 				postfix = lipgloss.NewStyle().
 					Foreground(Color(CTPC_RED)).
-					Render(fmt.Sprintf("\nError: %s", msg.error_text))
+					Render(fmt.Sprintf("\nError: %s", msg.ErrorText))
 			}
 
-			glamout, err := glam.Render(msg.display_text)
+			glamout, err := glam.Render(msg.DisplayText)
 			if err != nil {
 				logger.Error(err.Error())
 			}
@@ -476,8 +467,8 @@ func renderChatMessages(c ChatState) (content string) {
 	}
 
 	// render currently streaming message
-	if len(c.current_message.display_text) != 0 {
-		glamout, err := glam.Render(c.current_message.display_text)
+	if len(c.current_message.DisplayText) != 0 {
+		glamout, err := glam.Render(c.current_message.DisplayText)
 		if err != nil {
 			logger.Error(err.Error())
 		} else {

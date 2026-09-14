@@ -16,6 +16,6 @@
     // For Delve, the program can be a package name
     "program": "./src",
     "cwd": "$ZED_WORKTREE_ROOT",
-    "args": ["-p", "hello"]
+    "args": ["-p", "write random paragraph"]
   }
 ]
