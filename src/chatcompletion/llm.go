@@ -30,11 +30,34 @@ func RunAgentLoop(params AgentLoopParams) (exitcode int) {
 
 	// messages array that maintains chat history
 	// TODO add developer prompt, customizable?
-	messages := make([]openai.ChatCompletionMessageParamUnion, 100)
-	msg_len := 1
+	messages := make([]openai.ChatCompletionMessageParamUnion, core.MessageSizeLimit)
 
-	// initial message with given prompt
-	messages[0] = createUserMessage(params.UserPrompt)
+	i := 0
+	for ; i < len(params.PreviousMessages); i++ {
+		msg := params.PreviousMessages[i]
+		switch msg.MsgRole {
+		case core.DEVELOPER:
+			messages[i] = createDeveloperMessage(msg.DisplayText)
+
+		case core.USER:
+			text := msg.DisplayText
+			if msg.IsError {
+				text += "\n" + msg.ErrorText
+			}
+			messages[i] = createUserMessage(text)
+
+		case core.ASSISTANT:
+			messages[i] = createAssistantMessage(msg.DisplayText, msg.ToolsRequested)
+
+		case core.TOOL:
+			messages[i] = createToolMessage(msg.ToolResult.Id, msg.ToolResult.Result)
+		}
+
+	}
+
+	// initialize or append message with given prompt
+	messages[i] = createUserMessage(params.UserPrompt)
+	msg_len := i + 1
 
 	logger.Info("Starting new LLM agent loop.")
 	logger.Info(fmt.Sprintf("Prompt: '%s'", params.UserPrompt))
@@ -74,19 +97,11 @@ func RunAgentLoop(params AgentLoopParams) (exitcode int) {
 			if len(chunk.Choices) == 0 {
 				// NOTE last usage chunk that comes with stream option "include usage". Add to accumulator.
 				if params.LlmToTui != nil {
-					params.LlmToTui <- core.Llm2Tui{
-						IsToolCall: false,
-						ToolName:   "",
-						Params:     "",
+					l2t := initLlm2Tui()
+					l2t.IsUsageChunk = true
+					l2t.TokenSpent = int(acc.Usage.TotalTokens)
 
-						IsChunk:      false,
-						IsLastChunk:  false,
-						ChunkContent: "",
-
-						IsUsageChunk: true,
-						TokenSpent:   int(acc.Usage.TotalTokens),
-					}
-
+					params.LlmToTui <- l2t
 				}
 				continue
 			}
@@ -95,18 +110,12 @@ func RunAgentLoop(params AgentLoopParams) (exitcode int) {
 			if _, ok := acc.JustFinishedContent(); ok {
 				// NOTE seems this is not the last chunk sent, there is one last chunk sent without choices and just Usage data
 				if params.LlmToTui != nil {
-					params.LlmToTui <- core.Llm2Tui{
-						IsToolCall: false,
-						ToolName:   "",
-						Params:     "",
+					l2t := initLlm2Tui()
+					l2t.IsChunk = true
+					l2t.IsLastChunk = true
+					l2t.ChunkContent = chunk.Choices[0].Delta.Content
 
-						IsChunk:      true,
-						IsLastChunk:  true,
-						ChunkContent: chunk.Choices[0].Delta.Content,
-
-						IsUsageChunk: false,
-						TokenSpent:   0,
-					}
+					params.LlmToTui <- l2t
 				}
 				continue
 			}
@@ -120,32 +129,19 @@ func RunAgentLoop(params AgentLoopParams) (exitcode int) {
 			if refusal, ok := acc.JustFinishedRefusal(); ok {
 				refusal_out := fmt.Sprintf("Refusal (LLM): %s", refusal)
 				fmt.Fprintln(params.Writers.Err, refusal_out)
-				return 1
 			}
 
 			if params.LlmToTui != nil {
-				params.LlmToTui <- core.Llm2Tui{
-					IsToolCall: false,
-					ToolName:   "",
-					Params:     "",
+				l2t := initLlm2Tui()
+				l2t.IsChunk = true
+				l2t.ChunkContent = chunk.Choices[0].Delta.Content
 
-					IsChunk:      true,
-					IsLastChunk:  false,
-					ChunkContent: chunk.Choices[0].Delta.Content,
+				params.LlmToTui <- l2t
 
-					IsUsageChunk: false,
-					TokenSpent:   0,
-				}
 			} else {
-				// print chunk (helpful for non tui streaming)
+				// print chunk (helpful for prompt mode streaming directly to stdout)
 				fmt.Fprintf(params.Writers.Out, "%s", chunk.Choices[0].Delta.Content)
 			}
-		}
-
-		if err := stream.Err(); err != nil {
-			logger.Error(err.Error())
-			fmt.Fprintf(params.Writers.Err, "%v\n", err)
-			return 1
 		}
 
 		ctxErr := ctx.Err()
@@ -164,6 +160,12 @@ func RunAgentLoop(params AgentLoopParams) (exitcode int) {
 
 		}
 
+		if err := stream.Err(); err != nil {
+			logger.Error(err.Error())
+			fmt.Fprintf(params.Writers.Err, "%v\n", err)
+			return 1
+		}
+
 		if len(acc.Choices) == 0 {
 			logger.Error("No choices in LLM response.")
 			fmt.Fprintln(params.Writers.Err, "Error: No choices in LLM response")
@@ -173,7 +175,7 @@ func RunAgentLoop(params AgentLoopParams) (exitcode int) {
 		choice := acc.Choices[0]
 
 		// always add response to message array with assistant role
-		messages[msg_len] = createAssistantMessage(choice)
+		messages[msg_len] = createAssistantMessageFromResponse(choice)
 		msg_len++
 
 		results := make([]string, len(choice.Message.ToolCalls))
@@ -182,17 +184,13 @@ func RunAgentLoop(params AgentLoopParams) (exitcode int) {
 			for idx, tool_call := range tool_calls {
 				// TODO should be blocked until user gives permission
 				if params.LlmToTui != nil {
-					params.LlmToTui <- core.Llm2Tui{
-						IsToolCall: true,
-						ToolName:   tool_call.AsFunction().Function.Name,
-						Params:     tool_call.AsFunction().Function.Arguments,
+					l2t := initLlm2Tui()
+					l2t.IsToolCall = true
+					l2t.ToolName = tool_call.AsFunction().Function.Name
+					l2t.ToolParams = tool_call.AsFunction().Function.Arguments
+					l2t.ToolId = tool_call.ID
 
-						IsChunk:      false,
-						IsLastChunk:  false,
-						ChunkContent: "",
-
-						TokenSpent: int(acc.Usage.TotalTokens),
-					}
+					params.LlmToTui <- l2t
 				}
 
 				if params.TuiToLlm != nil {
@@ -228,11 +226,10 @@ func RunAgentLoop(params AgentLoopParams) (exitcode int) {
 				}
 
 				if err != nil {
-					err_msg := fmt.Sprintf("Error during tool call: %s", err.Error())
-					logger.Error(err_msg)
-					fmt.Fprintf(params.Writers.Err, "%s\n", err_msg)
+					logger.Error(err.Error())
+					fmt.Fprintf(params.Writers.Err, "%s\n", err.Error())
 
-					messages[msg_len] = createToolMessage(tool_call.ID, err_msg)
+					messages[msg_len] = createToolMessage(tool_call.ID, err.Error())
 					msg_len++
 
 					continue
@@ -253,29 +250,30 @@ func RunAgentLoop(params AgentLoopParams) (exitcode int) {
 				logger.Info(tool_log)
 				fmt.Fprintf(params.Writers.Err, "===== debug info =====\n%s===== END =====\n", tool_log)
 
+				if params.LlmToTui != nil {
+					l2t := initLlm2Tui()
+					l2t.IsToolResult = true
+					l2t.ToolId = tool_call.ID
+					l2t.ToolResult = results[idx]
+
+					params.LlmToTui <- l2t
+				}
+
 				messages[msg_len] = createToolMessage(tool_call.ID, results[idx])
 				msg_len++
 			}
-		} else {
-			// stream already wrote everything.
+
 			if params.LlmToTui != nil {
-				// send stop listening signal
-				params.LlmToTui <- core.Llm2Tui{
-					IsToolCall: false,
-					ToolName:   "",
-					Params:     "",
+				// signal current loop end, the agent loop is still running
+				l2t := initLlm2Tui()
+				l2t.IsLoopDone = true
 
-					IsChunk:      false,
-					IsLastChunk:  false,
-					ChunkContent: "",
-
-					IsUsageChunk: false,
-					TokenSpent:   0,
-
-					ShouldStopListening: true,
-				}
-
+				params.LlmToTui <- l2t
 			}
+
+		} else {
+			// stream already wrote everything. Agent loop has ended.
+			// Note: dont send IsLoopDone, let chatstream handle finishing of the agentLoop
 			fmt.Fprintln(params.Writers.Out, "")
 			break
 		}
@@ -331,8 +329,33 @@ func createDeveloperMessage(prompt string) openai.ChatCompletionMessageParamUnio
 	}
 }
 
+func createAssistantMessage(text string, tools_requested []core.ToolCallRequest) openai.ChatCompletionMessageParamUnion {
+	tool_calls := make([]openai.ChatCompletionMessageToolCallUnionParam, len(tools_requested))
+
+	for idx, tool := range tools_requested {
+		tool_calls[idx] = openai.ChatCompletionMessageToolCallUnionParam{
+			OfFunction: &openai.ChatCompletionMessageFunctionToolCallParam{
+				ID: tool.Id,
+				Function: openai.ChatCompletionMessageFunctionToolCallFunctionParam{
+					Arguments: tool.Params,
+					Name:      tool.Name,
+				},
+			},
+		}
+	}
+
+	return openai.ChatCompletionMessageParamUnion{
+		OfAssistant: &openai.ChatCompletionAssistantMessageParam{
+			Content: openai.ChatCompletionAssistantMessageParamContentUnion{
+				OfString: openai.String(text),
+			},
+			ToolCalls: tool_calls,
+		},
+	}
+}
+
 // Creates a ChatCompletion message with role "assistant" and prompt_response as content
-func createAssistantMessage(response openai.ChatCompletionChoice) openai.ChatCompletionMessageParamUnion {
+func createAssistantMessageFromResponse(response openai.ChatCompletionChoice) openai.ChatCompletionMessageParamUnion {
 	asst_msg := response.Message.ToAssistantMessageParam()
 	return openai.ChatCompletionMessageParamUnion{
 		OfAssistant: &asst_msg,
@@ -348,5 +371,27 @@ func createToolMessage(tool_id, tool_result string) openai.ChatCompletionMessage
 				OfString: openai.String(tool_result),
 			},
 		},
+	}
+}
+
+func initLlm2Tui() core.Llm2Tui {
+	return core.Llm2Tui{
+		IsToolCall: false,
+		ToolName:   "",
+		ToolParams: "",
+
+		IsToolResult: false,
+		ToolResult:   "",
+
+		ToolId: "",
+
+		IsChunk:      false,
+		IsLastChunk:  false,
+		ChunkContent: "",
+
+		IsUsageChunk: false,
+		TokenSpent:   0,
+
+		IsLoopDone: false,
 	}
 }

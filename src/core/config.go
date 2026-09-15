@@ -6,3 +6,5 @@ import "time"
 
 const StreamTimeout = 5 * time.Minute
 const ToolExecutionTimeout = 5 * time.Minute
+
+const MessageSizeLimit = 255

@@ -93,7 +93,7 @@ func TestCreateAssistantMessage(t *testing.T) {
 			if err := json.Unmarshal([]byte(tt.message), &want); err != nil {
 				t.Fatal(err)
 			}
-			assertJSON(t, createAssistantMessage(response), want)
+			assertJSON(t, createAssistantMessageFromResponse(response), want)
 		})
 	}
 }

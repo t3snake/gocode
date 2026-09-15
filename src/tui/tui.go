@@ -49,7 +49,7 @@ type ChatStream struct {
 }
 
 // Runs agent loop using openai chat completion API
-func promptLlm(prompt string, ctx context.Context, tui2llm chan core.Tui2Llm, llm2tui chan core.Llm2Tui) tea.Cmd {
+func promptLlm(prompt string, prev_messages []core.GocodeMessage, ctx context.Context, tui2llm chan core.Tui2Llm, llm2tui chan core.Llm2Tui) tea.Cmd {
 	// tea.Cmd can only take fn with empty params so return a function with empty params and use closure
 	// This function runs as a goroutine (handled by bubbletea)
 	// The return is any type, we have to intercept our type in Update function
@@ -60,9 +60,10 @@ func promptLlm(prompt string, ctx context.Context, tui2llm chan core.Tui2Llm, ll
 		client := chatcompletion.GetClient()
 
 		agent_loop_params := chatcompletion.AgentLoopParams{
-			Client:     client,
-			Ctx:        ctx,
-			UserPrompt: prompt,
+			Client:           client,
+			Ctx:              ctx,
+			UserPrompt:       prompt,
+			PreviousMessages: prev_messages,
 			Writers: core.Writers{
 				Out: &display_out,
 				Err: &display_err,
@@ -118,9 +119,15 @@ type ChatState struct {
 
 	// messages (history) and currently streaming message
 
-	messages        []core.GocodeMessage
+	messages []core.GocodeMessage
+
+	// Represents Assistant Message role that acculumates with streaming and is later appended to [ChatState.messages]
 	current_message core.GocodeMessage
-	token_spend     int
+
+	// Represents results for requested tool calls, if multiple need to track separately and when Assistant Message loop is finished, append to  [ChatState.messages] with role Tool
+	tool_results []core.ToolCallResult
+
+	token_spend int
 
 	// loading state
 	is_loading bool
@@ -190,12 +197,16 @@ func initialModel(llm2tui chan core.Llm2Tui, tui2llm chan core.Tui2Llm) ChatStat
 
 		messages: []core.GocodeMessage{},
 		current_message: core.GocodeMessage{
-			MsgRole:     core.LLM,
-			IsError:     false,
-			Id:          5,
-			DisplayText: "",
-			ErrorText:   "",
+			MsgRole:        core.ASSISTANT,
+			IsError:        false,
+			Id:             5,
+			DisplayText:    "",
+			ErrorText:      "",
+			ToolsRequested: []core.ToolCallRequest{},
+			ToolResult:     core.ToolCallResult{},
 		},
+
+		tool_results: []core.ToolCallResult{},
 
 		is_loading: false,
 		spinner:    s,
@@ -244,7 +255,7 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		content := renderChatMessages(c)
 		c.viewport.SetContent(content)
-		c.viewport.GotoBottom()
+		// c.viewport.GotoBottom() // probably dont need to go to bottom when resizing, there will be some desync based on width resize
 
 	case tea.MouseClickMsg:
 		// Note: Can either "select text" or "scroll" cant do both. Terminal alternate buffer limitation.
@@ -268,12 +279,45 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			c.viewport.GotoBottom()
 		}
 
-		if msg.llm_msg.IsToolCall && c.tui2llm != nil {
-			// TODO(t3snake): implement tool call user interaction allow-reject
-			c.tui2llm <- core.Tui2Llm{
-				IsAllowed:        true, // currently hardcoding to true, ideally have a simple button selection
-				AdjustmentPrompt: "",   // UX?
+		if msg.llm_msg.IsToolCall {
+			if c.tui2llm != nil {
+				// TODO(t3snake): implement tool call user interaction allow-reject
+				c.tui2llm <- core.Tui2Llm{
+					IsAllowed:        true, // currently hardcoding to true, ideally have a simple button selection
+					AdjustmentPrompt: "",   // UX?
+				}
 			}
+
+			// store requested tools in current message, fix order when ChatResult is returned
+			c.current_message.ToolsRequested = append(c.current_message.ToolsRequested, core.ToolCallRequest{
+				Id:     msg.llm_msg.ToolId,
+				Name:   msg.llm_msg.ToolName,
+				Params: msg.llm_msg.ToolParams,
+			})
+		}
+
+		if msg.llm_msg.IsToolResult {
+			c.tool_results = append(c.tool_results, core.ToolCallResult{
+				Id:     msg.llm_msg.ToolId,
+				Result: msg.llm_msg.ToolResult,
+			})
+		}
+
+		if msg.llm_msg.IsLoopDone {
+			// append the assistant role message
+			c.messages = append(c.messages, c.current_message)
+
+			// append tool results if any
+			for _, tool_result := range c.tool_results {
+				c.messages = append(c.messages, core.GocodeMessage{
+					MsgRole:    core.TOOL,
+					ToolResult: tool_result,
+				})
+			}
+
+			c.current_message = resetCurrentMessage(uint8(len(c.messages)))
+
+			c.tool_results = []core.ToolCallResult{}
 		}
 
 		// always have it active, by reopening listener immediately when returned
@@ -285,12 +329,6 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		c.current_message.IsError = msg.is_err
 		c.current_message.ErrorText = msg.err
 
-		c.messages = append(c.messages, c.current_message)
-
-		c.current_message.DisplayText = ""
-		c.current_message.ErrorText = ""
-		c.current_message.IsError = false
-
 		c.is_loading = false
 
 		// while prompt is enabled, dont let viewport scroll (j, k vim binds)
@@ -301,6 +339,8 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		content := renderChatMessages(c)
 		c.viewport.SetContent(content)
 		c.viewport.GotoBottom()
+
+		c.current_message = resetCurrentMessage(c.current_message.Id + 1)
 
 		c.ctx_cancel(nil)
 
@@ -337,13 +377,7 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				},
 			)
 
-			c.current_message = core.GocodeMessage{
-				MsgRole:     core.LLM,
-				Id:          uint8(len(c.messages)),
-				DisplayText: "",
-				IsError:     false,
-				ErrorText:   "",
-			}
+			c.current_message = resetCurrentMessage(uint8(len(c.messages)))
 
 			// while is loading, let viewport scroll (j, k vim binds)
 			c.viewport.KeyMap.Down.SetEnabled(true)
@@ -358,7 +392,7 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			return c, tea.Batch(
 				c.spinner.Tick,
-				promptLlm(prompt, c.ctx, c.tui2llm, c.llm2tui),
+				promptLlm(prompt, c.messages, c.ctx, c.tui2llm, c.llm2tui),
 			)
 
 		case "esc":
@@ -371,6 +405,14 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !c.prompt.Focused() && !c.is_loading {
 				cmd = c.prompt.Focus()
 				cmds = append(cmds, cmd)
+			}
+
+			if !c.is_loading {
+				// Note: will stop from keypress going to viewport update (vimbindings jumping around)
+				c.prompt, cmd = c.prompt.Update(msg)
+				cmds = append(cmds, cmd)
+
+				return c, tea.Batch(cmds...)
 			}
 		}
 
@@ -450,7 +492,7 @@ func renderChatMessages(c ChatState) (content string) {
 				Width(msg_width).
 				Render(msg.DisplayText) + "\n"
 
-		case core.LLM:
+		case core.ASSISTANT:
 			postfix := ""
 			if msg.IsError {
 				postfix = lipgloss.NewStyle().
@@ -477,4 +519,19 @@ func renderChatMessages(c ChatState) (content string) {
 	}
 
 	return content
+}
+
+func resetCurrentMessage(new_id uint8) core.GocodeMessage {
+	return core.GocodeMessage{
+		MsgRole:        core.ASSISTANT,
+		DisplayText:    "",
+		ErrorText:      "",
+		IsError:        false,
+		Id:             new_id,
+		ToolsRequested: []core.ToolCallRequest{},
+		ToolResult: core.ToolCallResult{
+			Id:     "",
+			Result: "",
+		},
+	}
 }

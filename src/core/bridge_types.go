@@ -6,10 +6,14 @@ type Llm2Tui struct {
 	// for tool call permission to tui
 
 	IsToolCall bool   // Reports whether LLM is requesting a tool call
-	ToolName   string // tool name, only guaranteed if [Llm2Tui.is_tool_call] is true
-
+	ToolName   string // tool name, only guaranteed if [Llm2Tui.IsToolCall] is true
+	ToolParams string // tool params, only guaranteed if [Llm2Tui.IsToolCall] is true
 	// TODO(t3snake): parse and make map[string]string
-	Params string // tool params, only guaranteed if [Llm2Tui.is_tool_call] is true
+
+	IsToolResult bool   // Reports result back to TUI for display, storage so next chat can recreate the history
+	ToolResult   string // tool result, only guaranteed if [Llm2Tui.IsToolResult] is true
+
+	ToolId string // Identifier from the LLM that links tool call request and result. Non null when either [Llm2Tui.IsToolCall] or [Llm2Tui.IsToolResult] is true
 
 	// stream thinking/content
 
@@ -20,7 +24,9 @@ type Llm2Tui struct {
 	IsUsageChunk bool // in streaming, the very last chunk when usage is enabled, just sends the token_spent
 	TokenSpent   int  // Reports how many tokens were spent so far in the agent loop.
 
-	ShouldStopListening bool // tui can safely stop listening when this is true
+	// Signals to TUI so it can append the current_message to messages and start fresh. Required to maintain Message history as is.
+	// This is only sent in the middle of the agent loop and not at the end of the loop
+	IsLoopDone bool
 }
 
 type Tui2Llm struct {
@@ -37,20 +43,35 @@ type Writers struct {
 	Err io.Writer
 }
 
-//
 type Role uint8
 
 const (
 	USER Role = iota
-	LLM
+	ASSISTANT
 	TOOL
+	DEVELOPER
 )
+
+// Struct representing tool calls requested by LLM in Assistant Role response
+type ToolCallRequest struct {
+	Id     string // Unique Id assigned by LLMs and the result is linked based on this Id
+	Name   string // Name of the tool that was requested
+	Params string // Params with which the requested tool should be called. Will be migrated to map[string]string
+}
+
+// Struct representing tool result reported back to LLM for a tool call requested by the LLM
+type ToolCallResult struct {
+	Id     string // Unique Id that corresponds to the ToolCallRequest.Id
+	Result string // The tool response
+}
 
 // Struct representing user and chat-agent/llm messages
 type GocodeMessage struct {
-	MsgRole     Role   // 0 USER, 1 LLM, 2 TOOL
-	Id          uint8  // unique identifier, currently only 256 messages possible
-	DisplayText string // message
-	IsError     bool
-	ErrorText   string // non null and non empty when is_err is true
+	MsgRole        Role   // 0 USER, 1 ASSISTANT, 2 TOOL, 3 DEVELOPER
+	Id             uint8  // unique identifier, currently only 256 messages possible
+	DisplayText    string // message
+	IsError        bool
+	ErrorText      string            // non null only when IsError is true
+	ToolsRequested []ToolCallRequest // non null only when MsgRole is Assistant/1 and toolcalls were requested
+	ToolResult     ToolCallResult    // should be non null when MsgRole is 2 (TOOL)
 }

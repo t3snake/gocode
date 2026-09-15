@@ -2,7 +2,6 @@
 
 ### NOW
 
-- [ ] Send history of chat ie. all agent loop mini session before appending new message. (needs map between openai and tui datatype)
 - [ ] Add tool call display in viewport
 - [ ] Just append to streaming message instead of re-rendering whole viewport
 - [ ] Fix selections - move to native selections (figure out text, figure out background and mouse position etc), cant turn back mouse mode once disabled
@@ -29,6 +28,8 @@
 
 ## Completed list
 
+- [x] Send history of chat ie. all agent loop mini session before appending new message. (needs map between openai and tui datatype)
+- [x] Fix some bugs with keybindings processed by both prompt viewport when typing, only one should process keypresses
 - [x] Refactor tui and llm into separate packages
 - [x] Refactor tools into separate package (map per toolname to get everything?)
 - [x] Fixed bash/pwsh tool errors just printing `exit status 1` now give back stdout, std err and error if happened to the LLM
