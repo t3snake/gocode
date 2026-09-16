@@ -28,6 +28,7 @@
 
 ## Completed list
 
+- [x] Fix display going off on the upcoming prompt after the history change.
 - [x] Send history of chat ie. all agent loop mini session before appending new message. (needs map between openai and tui datatype)
 - [x] Fix some bugs with keybindings processed by both prompt viewport when typing, only one should process keypresses
 - [x] Refactor tui and llm into separate packages

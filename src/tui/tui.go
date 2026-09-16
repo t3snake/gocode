@@ -329,6 +329,8 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		c.current_message.IsError = msg.is_err
 		c.current_message.ErrorText = msg.err
 
+		c.messages = append(c.messages, c.current_message)
+
 		c.is_loading = false
 
 		// while prompt is enabled, dont let viewport scroll (j, k vim binds)
