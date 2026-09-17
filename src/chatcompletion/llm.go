@@ -293,7 +293,11 @@ func GetClient() openai.Client {
 		apiKey = ""
 		// panic("Env variable OPENROUTER_API_KEY not found")
 	}
-	client := openai.NewClient(option.WithAPIKey(apiKey), option.WithBaseURL(baseUrl))
+	client := openai.NewClient(
+		option.WithAPIKey(apiKey),
+		option.WithBaseURL(baseUrl),
+		option.WithHeader("User-Agent", "GoCode/"+core.Version),
+	)
 
 	return client
 }

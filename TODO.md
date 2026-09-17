@@ -28,8 +28,9 @@
 
 ## Completed list
 
+- [x] Fix auto scroll down even when not streaming
 - [x] Fix display going off on the upcoming prompt after the history change.
-- [x] Send history of chat ie. all agent loop mini session before appending new message. (needs map between openai and tui datatype)
+- [x] **Send history of chat ie. all agent loop mini session before appending new message.**
 - [x] Fix some bugs with keybindings processed by both prompt viewport when typing, only one should process keypresses
 - [x] Refactor tui and llm into separate packages
 - [x] Refactor tools into separate package (map per toolname to get everything?)
@@ -42,13 +43,12 @@
 - [x] Markdown rendering library (Easy picking)
 - [x] Fix stuck at thinking ui when token context cutoff happens
 - [x] Add tool call logging
-- [x] Add cancel during stream (saves tokens / money)
+- [x] **Add cancel during stream (saves tokens / money)**
 - [x] Remove Chat theme (left and right margins) and use industry standard 
 - [x] Fix bug - Scrolling support disables text selection and vice versa
 - [x] Fix - Auto scroll down Chat message viewport
 - [x] Add logging to see what happened behind the scenes
 - [x] Fix prompt mode after introducing channels and streaming
 - [x] Fix duplicate messages
-- [x] Add streaming messages
-- [x] Requires communication flow between LLM API and TUI state
-- [x] Chat flow
+- [x] **Add streaming messages**
+- [x] **Chat flow - Requires communication flow between LLM API and TUI state**
