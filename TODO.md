@@ -4,30 +4,37 @@
 
 - [ ] Add tool call display in viewport
 - [ ] Just append to streaming message instead of re-rendering whole viewport
-- [ ] Fix selections - move to native selections (figure out text, figure out background and mouse position etc), cant turn back mouse mode once disabled
+- [ ] Start a new process without polluting main context for some tasks like readFile
+- [ ] Use jev to decide if tool call should be in subagent or not
 
 ### Very soon
 
-- [ ] Add either cancel recovery -> recovers prompt in promptbox on cancellation or better up for history of prompts
-- [ ] Add startup settings as json config initially, then move to settings menu
-- [ ] Add tool call prompt for user
 - [ ] Add tokens, context window info
 - [ ] /new to clear context (currently always clear context)
+- [ ] Add tool call prompt for user
+- [ ] Add startup settings as json config initially, then move to settings menu
+- [ ] TODO tool
+- [ ] Web search tool using DDG
+- [ ] Fix selections - move to native selections (figure out text, figure out background and mouse position etc), cant turn back mouse mode once disabled
+- [ ] Add either cancel recovery -> recovers prompt in promptbox on cancellation or better up for history of prompts
 - [ ] Save file for sessions
 - [ ] Add more themes
 
 ### Later
 
 - [ ] Delete specific context from message history - has to be assistant + user message (2 consecutive assistant messages will fail)
+- [ ] MCP Support
 - [ ] Chat navigation using arrows/vim bindings
 - [ ] Add settings, dialogs ?
 - [ ] Add changing log levels during runtime (hide/show tool output option in settings)
 - [ ] Help line for all views
 - [ ] Status line with - Model, token usage, context size
-- [ ] Start a new process without polluting main context for some tasks like readFile
 
 ## Completed list
 
+- [x] Fix missed bug `tool_call.AsFunction().x` works on the llm raw json, instead use `tool_call.Function.x`
+- [x] Fix duplicate response rendering, double user message since history also includes current prompt
+- [x] Fix auto scroll even when streaming but empty chunk
 - [x] Fix auto scroll down even when not streaming
 - [x] Fix display going off on the upcoming prompt after the history change.
 - [x] **Send history of chat ie. all agent loop mini session before appending new message.**

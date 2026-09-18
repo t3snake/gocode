@@ -60,10 +60,10 @@ func promptLlm(prompt string, prev_messages []core.GocodeMessage, ctx context.Co
 		client := chatcompletion.GetClient()
 
 		agent_loop_params := chatcompletion.AgentLoopParams{
-			Client:           client,
-			Ctx:              ctx,
-			UserPrompt:       prompt,
-			PreviousMessages: prev_messages,
+			Client:     client,
+			Ctx:        ctx,
+			UserPrompt: prompt,
+			Messages:   prev_messages,
 			Writers: core.Writers{
 				Out: &display_out,
 				Err: &display_err,
@@ -270,7 +270,7 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		c.is_selecting = false
 
 	case ChatStream:
-		if msg.llm_msg.IsChunk {
+		if msg.llm_msg.IsChunk && len(strings.TrimSpace(msg.llm_msg.ChunkContent)) != 0 {
 			c.current_message.DisplayText += msg.llm_msg.ChunkContent
 
 			// only rerender when there is a chunk content
@@ -290,17 +290,28 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			// store requested tools in current message, fix order when ChatResult is returned
 			c.current_message.ToolsRequested = append(c.current_message.ToolsRequested, core.ToolCallRequest{
-				Id:     msg.llm_msg.ToolId,
-				Name:   msg.llm_msg.ToolName,
-				Params: msg.llm_msg.ToolParams,
+				Id:        msg.llm_msg.ToolId,
+				Name:      msg.llm_msg.ToolName,
+				Params:    msg.llm_msg.ToolParams,
+				ResultRef: nil,
 			})
 		}
 
 		if msg.llm_msg.IsToolResult {
-			c.tool_results = append(c.tool_results, core.ToolCallResult{
+			result := core.ToolCallResult{
 				Id:     msg.llm_msg.ToolId,
 				Result: msg.llm_msg.ToolResult,
-			})
+			}
+
+			for _, reqtool := range c.current_message.ToolsRequested {
+				if reqtool.Id == result.Id {
+					// link the tool request and result
+					result.RequestRef = &reqtool
+					reqtool.ResultRef = &result
+				}
+			}
+
+			c.tool_results = append(c.tool_results, result)
 		}
 
 		if msg.llm_msg.IsLoopDone {
@@ -330,6 +341,7 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		c.current_message.ErrorText = msg.err
 
 		c.messages = append(c.messages, c.current_message)
+		c.current_message = resetCurrentMessage(c.current_message.Id + 1)
 
 		c.is_loading = false
 
@@ -341,8 +353,6 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		content := renderChatMessages(c)
 		c.viewport.SetContent(content)
 		c.viewport.GotoBottom()
-
-		c.current_message = resetCurrentMessage(c.current_message.Id + 1)
 
 		c.ctx_cancel(nil)
 

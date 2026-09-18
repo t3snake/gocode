@@ -18,12 +18,19 @@ Note: Optimized for local model. Tested with qwen3.5:9b model running through ol
 
 ### MacOS and linux
 
-- Run `./start_gocode.sh` to build and run `gocode`, which is implemented in
-   `src/main.go`.
+- Run `./start_gocode.sh` to build and run `gocode`, which is implemented in `src/main.go`.
 
-### All OS including Windows
+OR
 
-- Run `go run .\src\ -<optional_args>`
+- Run `go run ./src` in the root directory
+
+### Windows
+
+- On Windows, run `start_gocode.bat` to build and run `gocode`.
+
+OR
+
+- Run `go run .\src\` in the root directory.
 
 - Use commandline argument `-p "<your prompt>"` to run agent loop for your prompt.
 - Use without params to use the TUI

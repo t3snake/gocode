@@ -54,15 +54,17 @@ const (
 
 // Struct representing tool calls requested by LLM in Assistant Role response
 type ToolCallRequest struct {
-	Id     string // Unique Id assigned by LLMs and the result is linked based on this Id
-	Name   string // Name of the tool that was requested
-	Params string // Params with which the requested tool should be called. Will be migrated to map[string]string
+	Id        string          // Unique Id assigned by LLMs and the result is linked based on this Id
+	Name      string          // Name of the tool that was requested
+	Params    string          // Params with which the requested tool should be called. Will be migrated to map[string]string
+	ResultRef *ToolCallResult // Pointer to matching [ToolCallRequest]
 }
 
 // Struct representing tool result reported back to LLM for a tool call requested by the LLM
 type ToolCallResult struct {
-	Id     string // Unique Id that corresponds to the ToolCallRequest.Id
-	Result string // The tool response
+	Id         string           // Unique Id that corresponds to the ToolCallRequest.Id
+	Result     string           // The tool response
+	RequestRef *ToolCallRequest // Pointer to matching [ToolCallResult]
 }
 
 // Struct representing user and chat-agent/llm messages

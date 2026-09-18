@@ -16,13 +16,13 @@ import (
 )
 
 type AgentLoopParams struct {
-	Client           openai.Client        // Use GetClient() to get client
-	Ctx              context.Context      // Context used for passing user cancellations
-	UserPrompt       string               // The new prompt from the user
-	Writers          core.Writers         // Writers with output and error streams, used differently in prompt and TUI modes
-	PreviousMessages []core.GocodeMessage // Previous messages in the session if any
-	LlmToTui         chan core.Llm2Tui    // Channel for communication from this goroutine to the TUI, nil in prompt mode
-	TuiToLlm         chan core.Tui2Llm    // Channel for communication from TUI to this goroutine, nil in prompt mode
+	Client     openai.Client        // Use GetClient() to get client
+	Ctx        context.Context      // Context used for passing user cancellations
+	UserPrompt string               // The new prompt from the user
+	Writers    core.Writers         // Writers with output and error streams, used differently in prompt and TUI modes
+	Messages   []core.GocodeMessage // Current prompt along with previous messages in the session if any
+	LlmToTui   chan core.Llm2Tui    // Channel for communication from this goroutine to the TUI, nil in prompt mode
+	TuiToLlm   chan core.Tui2Llm    // Channel for communication from TUI to this goroutine, nil in prompt mode
 }
 
 func RunAgentLoop(params AgentLoopParams) (exitcode int) {
@@ -33,8 +33,8 @@ func RunAgentLoop(params AgentLoopParams) (exitcode int) {
 	messages := make([]openai.ChatCompletionMessageParamUnion, core.MessageSizeLimit)
 
 	i := 0
-	for ; i < len(params.PreviousMessages); i++ {
-		msg := params.PreviousMessages[i]
+	for ; i < len(params.Messages); i++ {
+		msg := params.Messages[i]
 		switch msg.MsgRole {
 		case core.DEVELOPER:
 			messages[i] = createDeveloperMessage(msg.DisplayText)
@@ -56,8 +56,7 @@ func RunAgentLoop(params AgentLoopParams) (exitcode int) {
 	}
 
 	// initialize or append message with given prompt
-	messages[i] = createUserMessage(params.UserPrompt)
-	msg_len := i + 1
+	msg_len := i
 
 	logger.Info("Starting new LLM agent loop.")
 	logger.Info(fmt.Sprintf("Prompt: '%s'", params.UserPrompt))
@@ -160,7 +159,7 @@ func RunAgentLoop(params AgentLoopParams) (exitcode int) {
 
 		}
 
-		if err := stream.Err(); err != nil {
+		if err = stream.Err(); err != nil {
 			logger.Error(err.Error())
 			fmt.Fprintf(params.Writers.Err, "%v\n", err)
 			return 1
@@ -186,8 +185,8 @@ func RunAgentLoop(params AgentLoopParams) (exitcode int) {
 				if params.LlmToTui != nil {
 					l2t := initLlm2Tui()
 					l2t.IsToolCall = true
-					l2t.ToolName = tool_call.AsFunction().Function.Name
-					l2t.ToolParams = tool_call.AsFunction().Function.Arguments
+					l2t.ToolName = tool_call.Function.Name
+					l2t.ToolParams = tool_call.Function.Arguments
 					l2t.ToolId = tool_call.ID
 
 					params.LlmToTui <- l2t
@@ -237,8 +236,8 @@ func RunAgentLoop(params AgentLoopParams) (exitcode int) {
 
 				var tool_result string
 
-				// TODO currently hardcoded truncation of tool result to 300 characters? Need setting for "on/off" and "when to truncate"
-				trunc_limit := 300
+				// TODO currently hardcoded in core/config.go - Need setting for "on/off" and "when to truncate"
+				trunc_limit := core.ToolResultLogTruncLimit
 				if len(results[idx]) < trunc_limit {
 					tool_result = results[idx]
 				} else {
