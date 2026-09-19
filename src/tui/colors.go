@@ -16,6 +16,7 @@ const (
 
 	// catpuccin macchiato theme
 	// https://github.com/catppuccin/catppuccin/blob/main/docs/style-guide.md
+
 	CTPC_BG        = "#494d64"
 	CTPC_ROSEWATER = "#f4dbd6"
 	CTPC_CRUST     = "#181926"

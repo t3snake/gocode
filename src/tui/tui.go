@@ -24,7 +24,7 @@ import (
 	"github.com/t3snake/gocode/src/logger"
 )
 
-// Starts and runs a bubbletea TUI program
+// StartTUI Starts and runs a bubbletea TUI program
 func StartTUI() {
 	tui2llm := make(chan core.Tui2Llm)
 	llm2tui := make(chan core.Llm2Tui)
@@ -79,14 +79,14 @@ func promptLlm(prompt string, prev_messages []core.GocodeMessage, ctx context.Co
 			return ChatResult{
 				out:    display_out.String(),
 				err:    display_err.String(),
-				is_err: (retcode != 0),
+				is_err: retcode != 0,
 			}
 
 		default:
 			return ChatResult{
 				out:    display_out.String(),
 				err:    display_err.String(),
-				is_err: (retcode != 0),
+				is_err: retcode != 0,
 			}
 		}
 
@@ -105,7 +105,7 @@ func listenLlmStream(llm2tui chan core.Llm2Tui) tea.Cmd {
 
 // ----- Main TUI Model Update View logic -----
 
-// TUI main state
+// ChatState TUI main state
 type ChatState struct {
 	// window dimensions
 
@@ -451,10 +451,10 @@ func (c ChatState) View() tea.View {
 	cursor_x := 0
 
 	if c.is_loading {
-		spinner := fmt.Sprintf("Thinking %s", c.spinner.View())
-		view += spinner
+		spinnr := fmt.Sprintf("Thinking %s", c.spinner.View())
+		view += spinnr
 		cursor_y = lipgloss.Height(view)
-		cursor_x = len(spinner)
+		cursor_x = len(spinnr)
 	} else {
 		chatBoxStyle := lipgloss.NewStyle().
 			BorderStyle(lipgloss.NormalBorder()).
@@ -496,6 +496,7 @@ func renderChatMessages(c ChatState) (content string) {
 		glamour.WithWordWrap(msg_width),
 		glamour.WithStyles(style),
 	)
+	defer glam.Close()
 
 	for _, msg := range c.messages {
 		switch msg.MsgRole {
@@ -517,6 +518,12 @@ func renderChatMessages(c ChatState) (content string) {
 				logger.Error(err.Error())
 			}
 			content += glamout + postfix + "\n"
+		case core.DEVELOPER:
+			break
+		case core.TOOL:
+
+		default:
+			panic("unhandled default case")
 		}
 	}
 

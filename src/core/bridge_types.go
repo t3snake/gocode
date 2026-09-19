@@ -35,7 +35,7 @@ type Tui2Llm struct {
 	AdjustmentPrompt string // only used to change course, if [Tui2Llm.is_allowed] is false
 }
 
-// Can be writing to stdout/stderr or files as logs
+// Writers Can be writing to stdout/stderr or files as logs
 // All printfs are written to logs, but specific logging is only written to log files
 // This is helpful in prompt mode on terminal, which usually would not show logs on the terminal
 type Writers struct {
@@ -52,7 +52,7 @@ const (
 	DEVELOPER
 )
 
-// Struct representing tool calls requested by LLM in Assistant Role response
+// ToolCallRequest Struct representing tool calls requested by LLM in Assistant Role response
 type ToolCallRequest struct {
 	Id        string          // Unique Id assigned by LLMs and the result is linked based on this Id
 	Name      string          // Name of the tool that was requested
@@ -60,14 +60,14 @@ type ToolCallRequest struct {
 	ResultRef *ToolCallResult // Pointer to matching [ToolCallRequest]
 }
 
-// Struct representing tool result reported back to LLM for a tool call requested by the LLM
+// ToolCallResult Struct representing tool result reported back to LLM for a tool call requested by the LLM
 type ToolCallResult struct {
 	Id         string           // Unique Id that corresponds to the ToolCallRequest.Id
 	Result     string           // The tool response
 	RequestRef *ToolCallRequest // Pointer to matching [ToolCallResult]
 }
 
-// Struct representing user and chat-agent/llm messages
+// GocodeMessage Struct representing user and chat-agent/llm messages
 type GocodeMessage struct {
 	MsgRole        Role   // 0 USER, 1 ASSISTANT, 2 TOOL, 3 DEVELOPER
 	Id             uint8  // unique identifier, currently only 256 messages possible

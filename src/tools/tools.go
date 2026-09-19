@@ -13,9 +13,9 @@ import (
 )
 
 // Constants
+
 const ReadToolName = "read_file"
 const WriteToolName = "write_file"
-
 const RunCommandToolName = "run_command_on_terminal"
 
 // Tool utils
@@ -73,12 +73,12 @@ func ExecuteToolCall(toolcall openai.ChatCompletionMessageToolCallUnion, ctx con
 		}
 		contentstr, ok := content.(string)
 		if !ok {
-			return "", fmt.Errorf("Error: content not of type string\n")
+			return "", fmt.Errorf("Error: content not of type string.\n")
 		}
 
 		err := writeFile(pathstr, contentstr)
 		if err != nil {
-			return "", fmt.Errorf("Error while writing file: %s", err.Error())
+			return "", fmt.Errorf("Error: while writing file: %s.\n", err.Error())
 		}
 
 		return "write_file successful", nil
@@ -90,7 +90,7 @@ func ExecuteToolCall(toolcall openai.ChatCompletionMessageToolCallUnion, ctx con
 		}
 		commandstr, ok := command.(string)
 		if !ok {
-			return "", fmt.Errorf("Error: command not of type string\n")
+			return "", fmt.Errorf("Error: command not of type string.\n")
 		}
 
 		stdout, stderr, err := runCommand(commandstr, ctx)
@@ -105,7 +105,7 @@ func ExecuteToolCall(toolcall openai.ChatCompletionMessageToolCallUnion, ctx con
 	return "", fmt.Errorf("Error: unknown tool name %s\n", fnname)
 }
 
-// Built in tool functions and registrations
+// ReadFileRegistration Built in tool functions and registrations
 func ReadFileRegistration() openai.ChatCompletionToolUnionParam {
 	return openai.ChatCompletionToolUnionParam{
 		OfFunction: &openai.ChatCompletionFunctionToolParam{
