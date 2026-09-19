@@ -138,6 +138,7 @@ type ChatState struct {
 	theme       Theme
 	user_style  lipgloss.Style
 	agent_style lipgloss.Style
+	tool_style  lipgloss.Style
 
 	// Channel for communication between TUI and LLM goroutines. For streaming and toolcall UX
 
@@ -187,6 +188,8 @@ func initialModel(llm2tui chan core.Llm2Tui, tui2llm chan core.Tui2Llm) ChatStat
 
 	us := lipgloss.NewStyle().Background(theme.UserChatBackground).Padding(1)
 	as := lipgloss.NewStyle().Background(theme.AgentChatBackground).Padding(1)
+	ts := lipgloss.NewStyle().Background(theme.ToolCallBackground).
+		Foreground(Color(CTPC_SUBTEXT_0)).PaddingLeft(5).PaddingRight(5)
 
 	return ChatState{
 		app_width:  400,
@@ -214,6 +217,7 @@ func initialModel(llm2tui chan core.Llm2Tui, tui2llm chan core.Tui2Llm) ChatStat
 		theme:       theme,
 		user_style:  us,
 		agent_style: as,
+		tool_style:  ts,
 
 		llm2tui: llm2tui,
 		tui2llm: tui2llm,
@@ -521,6 +525,9 @@ func renderChatMessages(c ChatState) (content string) {
 		case core.DEVELOPER:
 			break
 		case core.TOOL:
+			content += c.tool_style.AlignHorizontal(lipgloss.Position(lipgloss.Center)).Render(
+				fmt.Sprintf("✔ %s %s", msg.ToolResult.RequestRef.Name, msg.ToolResult.RequestRef.Params),
+			)
 
 		default:
 			panic("unhandled default case")

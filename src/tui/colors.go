@@ -17,15 +17,17 @@ const (
 	// catpuccin macchiato theme
 	// https://github.com/catppuccin/catppuccin/blob/main/docs/style-guide.md
 
-	CTPC_BG        = "#494d64"
-	CTPC_ROSEWATER = "#f4dbd6"
-	CTPC_CRUST     = "#181926"
-	CTPC_LAVENDER  = "#b7bdf8"
-	CTPC_OVERLAY_0 = "#6e738d"
-	CTPC_SUBTEXT   = "#a5adcb"
-	CTPC_RED       = "#ed8796"
-	CTPC_BG_2      = "#5b6078"
-	CTPC_BLUE      = "#8aadf4"
+	CTPC_BG_SURFACE_1 = "#494d64"
+	CTPC_BG_BASE      = "#24273a"
+	CTPC_ROSEWATER    = "#f4dbd6"
+	CTPC_CRUST        = "#181926"
+	CTPC_LAVENDER     = "#b7bdf8"
+	CTPC_OVERLAY_0    = "#6e738d"
+	CTPC_SUBTEXT_0    = "#a5adcb"
+	CTPC_TEXT         = "#cad3f5"
+	CTPC_RED          = "#ed8796"
+	CTPC_BG_2         = "#5b6078"
+	CTPC_BLUE         = "#8aadf4"
 )
 
 type Theme struct {
@@ -37,6 +39,7 @@ type Theme struct {
 	TerminalBackground  color.Color
 	UserChatBackground  color.Color
 	AgentChatBackground color.Color
+	ToolCallBackground  color.Color
 }
 
 var initialTheme = Theme{
@@ -55,10 +58,11 @@ var catpuccinMacchiatoTheme = Theme{
 	CursorText:          Color(CTPC_CRUST),
 	ActiveBorder:        Color(CTPC_LAVENDER),
 	InactiveBorder:      Color(CTPC_OVERLAY_0),
-	Text:                Color(CTPC_SUBTEXT),
-	TerminalBackground:  Color(CTPC_BG),
-	UserChatBackground:  Color(CTPC_BG_2),
-	AgentChatBackground: Color(CTPC_BG),
+	Text:                Color(CTPC_TEXT),
+	TerminalBackground:  Color(CTPC_BG_BASE),
+	UserChatBackground:  Color(CTPC_BG_SURFACE_1),
+	AgentChatBackground: Color(CTPC_BG_BASE),
+	ToolCallBackground:  Color(CTPC_BG_2),
 }
 
 func Color(hex string) color.Color {

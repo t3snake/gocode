@@ -1,0 +1,13 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Gocode TUI mode" type="GoApplicationRunConfiguration" factoryName="Go Application">
+    <module name="gocode" />
+    <working_directory value="$PROJECT_DIR$" />
+    <kind value="PACKAGE" />
+    <package value="github.com/t3snake/gocode/src" />
+    <directory value="$PROJECT_DIR$" />
+    <output_directory value="$PROJECT_DIR$/build" />
+    <pty_enabled value="true" />
+    <auto_managed_config_id value="$PROJECT_DIR$/src" />
+    <method v="2" />
+  </configuration>
+</component>
