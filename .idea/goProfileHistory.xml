@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="GoProfileHistory">
+    <profile entry="C:\Users\T3\GoLandProfiles\Gocode_TUI_mode-goroutine-2026-09-20-233653-405.pprof">
+      <GoProfileMapEntry>
+        <option name="buildAnchorMillis" value="1789927384499" />
+        <option name="file" value="Gocode_TUI_mode-goroutine-2026-09-20-233653-405.pprof" />
+        <option name="ours" value="true" />
+        <option name="profileType" value="GOROUTINE" />
+      </GoProfileMapEntry>
+    </profile>
+    <profile entry="C:\Users\T3\GoLandProfiles\Gocode_TUI_mode-allocs-2026-09-20-233829-832.pprof">
+      <GoProfileMapEntry>
+        <option name="buildAnchorMillis" value="1789927384499" />
+        <option name="file" value="Gocode_TUI_mode-allocs-2026-09-20-233829-832.pprof" />
+        <option name="ours" value="true" />
+        <option name="profileType" value="ALLOCS" />
+      </GoProfileMapEntry>
+    </profile>
+    <profile entry="C:\Users\T3\GoLandProfiles\Gocode_TUI_mode-heap_with_gc-2026-09-20-233936-389.pprof">
+      <GoProfileMapEntry>
+        <option name="buildAnchorMillis" value="1789927384499" />
+        <option name="file" value="Gocode_TUI_mode-heap_with_gc-2026-09-20-233936-389.pprof" />
+        <option name="ours" value="true" />
+        <option name="profileType" value="HEAP_GC" />
+      </GoProfileMapEntry>
+    </profile>
+    <profile entry="C:\Users\T3\GoLandProfiles\Gocode_TUI_mode-cpu-2026-09-20-234045-302.pprof">
+      <GoProfileMapEntry>
+        <option name="buildAnchorMillis" value="1789927384499" />
+        <option name="file" value="Gocode_TUI_mode-cpu-2026-09-20-234045-302.pprof" />
+        <option name="ours" value="true" />
+        <option name="profileType" value="CPU" />
+      </GoProfileMapEntry>
+    </profile>
+  </component>
+</project>

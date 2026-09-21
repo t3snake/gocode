@@ -31,7 +31,10 @@ func StartTUI() {
 
 	p := tea.NewProgram(initialModel(llm2tui, tui2llm), tea.WithFPS(120))
 	if _, err := p.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error %v", err)
+		_, err2 := fmt.Fprintf(os.Stderr, "Error %v", err)
+		if err2 != nil {
+			panic(err2)
+		}
 		os.Exit(1)
 	}
 }
@@ -274,7 +277,7 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		c.is_selecting = false
 
 	case ChatStream:
-		if msg.llm_msg.IsChunk && len(strings.TrimSpace(msg.llm_msg.ChunkContent)) != 0 {
+		if msg.llm_msg.IsChunk && len(msg.llm_msg.ChunkContent) != 0 {
 			c.current_message.DisplayText += msg.llm_msg.ChunkContent
 
 			// only rerender when there is a chunk content
@@ -284,14 +287,6 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if msg.llm_msg.IsToolCall {
-			if c.tui2llm != nil {
-				// TODO(t3snake): implement tool call user interaction allow-reject
-				c.tui2llm <- core.Tui2Llm{
-					IsAllowed:        true, // currently hardcoding to true, ideally have a simple button selection
-					AdjustmentPrompt: "",   // UX?
-				}
-			}
-
 			// store requested tools in current message, fix order when ChatResult is returned
 			c.current_message.ToolsRequested = append(c.current_message.ToolsRequested, core.ToolCallRequest{
 				Id:        msg.llm_msg.ToolId,
@@ -299,6 +294,14 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				Params:    msg.llm_msg.ToolParams,
 				ResultRef: nil,
 			})
+
+			if c.tui2llm != nil {
+				// TODO(t3snake): implement tool call user interaction allow-reject
+				c.tui2llm <- core.Tui2Llm{
+					IsAllowed:        true, // currently hardcoding to true, ideally have a simple button selection
+					AdjustmentPrompt: "",   // UX?
+				}
+			}
 		}
 
 		if msg.llm_msg.IsToolResult {
@@ -523,7 +526,6 @@ func renderChatMessages(c ChatState) (content string) {
 			}
 			content += glamout + postfix + "\n"
 		case core.DEVELOPER:
-			break
 		case core.TOOL:
 			content += c.tool_style.AlignHorizontal(lipgloss.Position(lipgloss.Center)).Render(
 				fmt.Sprintf("✔ %s %s", msg.ToolResult.RequestRef.Name, msg.ToolResult.RequestRef.Params),
