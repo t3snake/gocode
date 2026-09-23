@@ -41,6 +41,7 @@ func StartTUI() {
 
 // ----- Bridge between TUI and calls to LLM -----
 
+// ChatResult is a wrapper that wraps the final result from
 type ChatResult struct {
 	out    string
 	err    string
@@ -189,10 +190,10 @@ func initialModel(llm2tui chan core.Llm2Tui, tui2llm chan core.Tui2Llm) ChatStat
 	s.Spinner = spinner.Points
 	s.Style = lipgloss.NewStyle().Foreground(Color(CTPC_RED))
 
-	us := lipgloss.NewStyle().Background(theme.UserChatBackground).Padding(1)
-	as := lipgloss.NewStyle().Background(theme.AgentChatBackground).Padding(1)
+	us := lipgloss.NewStyle().Background(theme.UserChatBackground).Padding(1).MarginBottom(1)
+	as := lipgloss.NewStyle().Background(theme.AgentChatBackground).Padding(1).MarginBottom(1)
 	ts := lipgloss.NewStyle().Background(theme.ToolCallBackground).
-		Foreground(Color(CTPC_SUBTEXT_0)).PaddingLeft(5).PaddingRight(5)
+		Foreground(Color(CTPC_SUBTEXT_0)).PaddingLeft(5).PaddingRight(5).MarginBottom(1)
 
 	return ChatState{
 		app_width:  400,
@@ -248,9 +249,9 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		c.app_height = uint16(msg.Height)
 		c.app_width = uint16(msg.Width)
 
-		c.prompt.SetWidth(msg.Width - 3)
+		c.prompt.SetWidth(msg.Width)
 
-		c.viewport.SetWidth(msg.Width - 1)
+		c.viewport.SetWidth(msg.Width)
 
 		if c.is_loading {
 			c.viewport.SetHeight(msg.Height - 3)
@@ -258,7 +259,7 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			c.viewport.SetHeight(msg.Height - c.prompt.Height() - 3)
 		}
 
-		c.viewport.Style = lipgloss.NewStyle().Padding(1).Align(lipgloss.Center)
+		c.viewport.Style = lipgloss.NewStyle().Align(lipgloss.Center)
 
 		content := renderChatMessages(c)
 		c.viewport.SetContent(content)
@@ -302,6 +303,10 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					AdjustmentPrompt: "",   // UX?
 				}
 			}
+
+			content := renderChatMessages(c)
+			c.viewport.SetContent(content)
+			c.viewport.GotoBottom()
 		}
 
 		if msg.llm_msg.IsToolResult {
@@ -315,6 +320,7 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					// link the tool request and result
 					result.RequestRef = &reqtool
 					reqtool.ResultRef = &result
+					break
 				}
 			}
 
@@ -466,7 +472,7 @@ func (c ChatState) View() tea.View {
 		chatBoxStyle := lipgloss.NewStyle().
 			BorderStyle(lipgloss.NormalBorder()).
 			BorderForeground(c.theme.ActiveBorder).
-			Width(int(c.app_width) - 1).
+			Width(int(c.app_width)).
 			Height(7).
 			MarginBottom(1)
 
@@ -495,12 +501,13 @@ func (c ChatState) View() tea.View {
 
 func renderChatMessages(c ChatState) (content string) {
 	content = ""
-	msg_width := c.viewport.Width() - 2 // subtract padding
+	msg_width := c.viewport.Width()
+	txt_width := msg_width - 2 // subtract padding
 
 	// md render lib
 	style := styles.DarkStyleConfig
 	glam, _ := glamour.NewTermRenderer(
-		glamour.WithWordWrap(msg_width),
+		glamour.WithWordWrap(txt_width),
 		glamour.WithStyles(style),
 	)
 	defer glam.Close()
@@ -527,9 +534,9 @@ func renderChatMessages(c ChatState) (content string) {
 			content += glamout + postfix + "\n"
 		case core.DEVELOPER:
 		case core.TOOL:
-			content += c.tool_style.AlignHorizontal(lipgloss.Position(lipgloss.Center)).Render(
-				fmt.Sprintf("✔ %s %s", msg.ToolResult.RequestRef.Name, msg.ToolResult.RequestRef.Params),
-			)
+			content += c.tool_style.
+				AlignHorizontal(lipgloss.Position(lipgloss.Center)).
+				Render(fmt.Sprintf("✔ %s %s", msg.ToolResult.RequestRef.Name, msg.ToolResult.RequestRef.Params))
 
 		default:
 			panic("unhandled default case")
@@ -543,6 +550,18 @@ func renderChatMessages(c ChatState) (content string) {
 			logger.Error(err.Error())
 		} else {
 			content += glamout + "\n"
+		}
+	}
+
+	for _, tool := range c.current_message.ToolsRequested {
+		if tool.ResultRef != nil {
+			content += c.tool_style.
+				AlignHorizontal(lipgloss.Position(lipgloss.Center)).
+				Render(fmt.Sprintf("✔ %s %s", tool.Name, tool.Params))
+		} else {
+			content += c.tool_style.
+				AlignHorizontal(lipgloss.Position(lipgloss.Center)).
+				Render(fmt.Sprintf("☯ %s %s", tool.Name, tool.Params))
 		}
 	}
 
