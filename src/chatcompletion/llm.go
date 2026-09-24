@@ -285,12 +285,11 @@ func GetClient() openai.Client {
 	apiKey := os.Getenv("OPENROUTER_API_KEY")
 	baseUrl := os.Getenv("OPENROUTER_BASE_URL")
 	if baseUrl == "" {
-		baseUrl = "http://localhost:3434/v1"
+		baseUrl = core.LocalLlmEndpoint
 	}
 
 	if apiKey == "" {
-		apiKey = ""
-		// panic("Env variable OPENROUTER_API_KEY not found")
+		logger.Warning("Env variable OPENROUTER_API_KEY not found, defaulting to empty")
 	}
 	client := openai.NewClient(
 		option.WithAPIKey(apiKey),

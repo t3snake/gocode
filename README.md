@@ -36,6 +36,59 @@ OR
 - Use without params to use the TUI
 
 
+## Jev API
+
+The `src/jev` package uses Go's standard HTTP library to call the
+[TypeSafe API](https://docs.typesafe.ai/api). Set `TYPESAFE_API_KEY` in the
+environment before you create a client. No extra dependencies are needed.
+
+Pass a slice of primitive questions. The result is a slice of answers in the
+same order. The state and instructions can be strings, objects, or arrays.
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+
+	"github.com/t3snake/gocode/src/jev"
+)
+
+func main() {
+	client, err := jev.NewClient()
+	if err != nil {
+		log.Fatal(err)
+	}
+	answers, err := client.Evaluate(context.Background(), "My payment failed.", []jev.Question{
+		{Type: jev.Noul, Instructions: "Is this urgent?"},
+		{
+			Type: jev.Choice, Instructions: "Which team should handle this?",
+			Criteria: map[string]any{"billing": "Payments and refunds", "technical": nil},
+		},
+		{
+			Type: jev.Score, Instructions: "How frustrated is the customer?",
+			Criteria: []string{"Calm", "Frustrated", "Very angry"},
+		},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(answers[0].Noul, answers[1].Choice, answers[2].Score)
+}
+```
+
+Noul returns a probability from 0 to 1. Choice returns an option name. Score
+returns a weighted level index. Answers also retain the probabilities,
+confidence, and legend where the API provides them.
+
+The default model is `jev-latest`. Set `client.Model` to select another model.
+The default HTTP timeout is one minute. Use the context to cancel a request,
+or set `client.HTTPClient` to supply your own HTTP client. HTTP failures return
+`*jev.APIError` with the status code and response body. Requests are not retried
+automatically; use backoff before retrying status 429 or 529.
+
 ## Architecture
 
 ```mermaid
