@@ -303,6 +303,9 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			c.current_message.is_empty = false
 		}
 
+		// get the exact message array from AgentLoop that can be passed back
+		c.message_history = msg.prev_messages
+
 		if !c.current_message.is_empty {
 			c.tui_messages = append(c.tui_messages, c.current_message)
 		}
