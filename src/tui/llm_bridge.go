@@ -58,24 +58,12 @@ func promptLlm(
 
 		result := chatcompletion.RunAgentLoop(agent_loop_params)
 
-		select {
-		case <-ctx.Done():
-			return ChatResult{
-				prev_messages: result.Messages,
-				out:           display_out.String(),
-				err:           display_err.String(),
-				is_err:        result.Retcode != 0,
-			}
-
-		default:
-			return ChatResult{
-				prev_messages: result.Messages,
-				out:           display_out.String(),
-				err:           display_err.String(),
-				is_err:        result.Retcode != 0,
-			}
+		return ChatResult{
+			prev_messages: result.Messages,
+			out:           display_out.String(),
+			err:           display_err.String(),
+			is_err:        result.Retcode != 0,
 		}
-
 	}
 }
 

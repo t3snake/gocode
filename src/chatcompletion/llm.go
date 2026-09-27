@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
+	"strings"
 
 	"github.com/t3snake/gocode/src/core"
 	"github.com/t3snake/gocode/src/logger"
@@ -38,8 +40,13 @@ func RunAgentLoop(params AgentLoopParams) (result AgentLoopResult) {
 	messages := make([]openai.ChatCompletionMessageParamUnion, core.MessageSizeLimit)
 
 	i := 0
-	for ; i < len(params.Messages); i++ {
-		messages[i] = params.Messages[i]
+	if len(params.Messages) == 0 {
+		messages[0] = createDeveloperMessage(getSystemPrompt())
+		i++
+	} else {
+		for ; i < len(params.Messages); i++ {
+			messages[i] = params.Messages[i]
+		}
 	}
 
 	// initialize or append message with given prompt
@@ -53,7 +60,7 @@ func RunAgentLoop(params AgentLoopParams) (result AgentLoopResult) {
 		if msg_len >= 250 {
 			message := "Message count reached >= 250. Time to increase array size."
 			logger.Error(message)
-			fmt.Println(params.Writers.Err, message)
+			fmt.Fprintln(params.Writers.Err, message)
 			result.Retcode = 1
 			result.Messages = messages[:msg_len]
 			return
@@ -65,7 +72,7 @@ func RunAgentLoop(params AgentLoopParams) (result AgentLoopResult) {
 
 		stream := params.Client.Chat.Completions.NewStreaming(ctx,
 			openai.ChatCompletionNewParams{
-				Model:    "Qwen3.6-35B-A3B-UD-IQ4_XS.gguf",
+				Model:    core.ModelName,
 				Messages: messages[:msg_len],
 				Tools:    registerTools(),
 				StreamOptions: openai.ChatCompletionStreamOptionsParam{
@@ -359,6 +366,59 @@ func createToolMessage(tool_id, tool_result string) openai.ChatCompletionMessage
 			},
 		},
 	}
+}
+
+func getSystemPrompt() string {
+	cmd := exec.Command("pwd")
+
+	var out strings.Builder
+	cmd.Stdout = &out
+
+	err := cmd.Run()
+	if err != nil {
+		return "You are a coding assistant"
+	}
+
+	agent_md_content := getAgentsMdContent()
+	if len(agent_md_content) != 0 {
+		agent_md_content = fmt.Sprintf("AGENTS.md contents\n%s", agent_md_content)
+	}
+
+	files_in_dir := filesInPwd()
+	if len(files_in_dir) != 0 {
+		files_in_dir = fmt.Sprintf("Files in current directory\n%s\n", files_in_dir)
+	}
+
+	return fmt.Sprintf("%s\nPresent Working Directory: %s\n%s%s",
+		"You are a coding assistant/agent",
+		out.String(),
+		files_in_dir,
+		agent_md_content,
+	)
+}
+
+func getAgentsMdContent() string {
+	content, err := os.ReadFile("AGENTS.md")
+	if err != nil {
+		// assume the file is not there
+		return ""
+	}
+
+	return string(content[:])
+}
+
+func filesInPwd() string {
+	cmd := exec.Command("ls")
+
+	var out strings.Builder
+	cmd.Stdout = &out
+
+	err := cmd.Run()
+	if err != nil {
+		return ""
+	}
+
+	return out.String()
 }
 
 func initLlm2Tui() core.Llm2Tui {
