@@ -55,7 +55,7 @@ func RunAgentLoop(params AgentLoopParams) (result AgentLoopResult) {
 			logger.Error(message)
 			fmt.Println(params.Writers.Err, message)
 			result.Retcode = 1
-			result.Messages = messages
+			result.Messages = messages[:msg_len]
 			return
 		}
 
@@ -142,7 +142,7 @@ func RunAgentLoop(params AgentLoopParams) (result AgentLoopResult) {
 			logger.Error(timeout)
 			fmt.Fprintf(params.Writers.Err, "%s\n", timeout)
 
-			result.Messages = messages
+			result.Messages = messages[:msg_len]
 			result.Retcode = 1
 			return
 
@@ -156,7 +156,7 @@ func RunAgentLoop(params AgentLoopParams) (result AgentLoopResult) {
 			logger.Error(err.Error())
 			fmt.Fprintf(params.Writers.Err, "%v\n", err)
 
-			result.Messages = messages
+			result.Messages = messages[:msg_len]
 			result.Retcode = 1
 			return
 		}
@@ -165,7 +165,7 @@ func RunAgentLoop(params AgentLoopParams) (result AgentLoopResult) {
 			logger.Error("No choices in LLM response.")
 			fmt.Fprintln(params.Writers.Err, "Error: No choices in LLM response")
 
-			result.Messages = messages
+			result.Messages = messages[:msg_len]
 			result.Retcode = 1
 			return
 		}
@@ -199,7 +199,7 @@ func RunAgentLoop(params AgentLoopParams) (result AgentLoopResult) {
 						logger.Info("User did not allow tool call")
 						fmt.Fprintf(params.Writers.Err, "User did not allow tool call")
 
-						result.Messages = messages
+						result.Messages = messages[:msg_len]
 						result.Retcode = 1
 						return
 					}
@@ -218,7 +218,7 @@ func RunAgentLoop(params AgentLoopParams) (result AgentLoopResult) {
 					logger.Error(timeout)
 					fmt.Fprintf(params.Writers.Err, "%s\n", timeout)
 
-					result.Messages = messages
+					result.Messages = messages[:msg_len]
 					result.Retcode = 1
 					return
 
@@ -226,7 +226,7 @@ func RunAgentLoop(params AgentLoopParams) (result AgentLoopResult) {
 					logger.Error(ctxErr.Error())
 					fmt.Fprintf(params.Writers.Err, "Note: execution of tool %s aborted due to interruption", tool_call.Function.Name)
 
-					result.Messages = messages
+					result.Messages = messages[:msg_len]
 					result.Retcode = 1
 					return
 
@@ -286,7 +286,7 @@ func RunAgentLoop(params AgentLoopParams) (result AgentLoopResult) {
 		}
 	}
 
-	result.Messages = messages
+	result.Messages = messages[:msg_len]
 	result.Retcode = 0
 	return
 }
