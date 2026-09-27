@@ -16,16 +16,21 @@ import (
 )
 
 type AgentLoopParams struct {
-	Client     openai.Client        // Use GetClient() to get client
-	Ctx        context.Context      // Context used for passing user cancellations
-	UserPrompt string               // The new prompt from the user
-	Writers    core.Writers         // Writers with output and error streams, used differently in prompt and TUI modes
-	Messages   []core.GocodeMessage // Current prompt along with previous messages in the session if any
-	LlmToTui   chan core.Llm2Tui    // Channel for communication from this goroutine to the TUI, nil in prompt mode
-	TuiToLlm   chan core.Tui2Llm    // Channel for communication from TUI to this goroutine, nil in prompt mode
+	Client     openai.Client                            // Use GetClient() to get client
+	Ctx        context.Context                          // Context used for passing user cancellations
+	UserPrompt string                                   // The new prompt from the user
+	Writers    core.Writers                             // Writers with output and error streams, used differently in prompt and TUI modes
+	Messages   []openai.ChatCompletionMessageParamUnion // Previous messages in the session if any
+	LlmToTui   chan core.Llm2Tui                        // Channel for communication from this goroutine to the TUI, nil in prompt mode
+	TuiToLlm   chan core.Tui2Llm                        // Channel for communication from TUI to this goroutine, nil in prompt mode
 }
 
-func RunAgentLoop(params AgentLoopParams) (exitcode int) {
+type AgentLoopResult struct {
+	Retcode  int
+	Messages []openai.ChatCompletionMessageParamUnion
+}
+
+func RunAgentLoop(params AgentLoopParams) (result AgentLoopResult) {
 	var err error
 
 	// messages array that maintains chat history
@@ -34,39 +39,24 @@ func RunAgentLoop(params AgentLoopParams) (exitcode int) {
 
 	i := 0
 	for ; i < len(params.Messages); i++ {
-		msg := params.Messages[i]
-		switch msg.MsgRole {
-		case core.DEVELOPER:
-			messages[i] = createDeveloperMessage(msg.DisplayText)
-
-		case core.USER:
-			text := msg.DisplayText
-			if msg.IsError {
-				text += "\n" + msg.ErrorText
-			}
-			messages[i] = createUserMessage(text)
-
-		case core.ASSISTANT:
-			messages[i] = createAssistantMessage(msg.DisplayText, msg.ToolsRequested)
-
-		case core.TOOL:
-			messages[i] = createToolMessage(msg.ToolResult.Id, msg.ToolResult.Result)
-		}
-
+		messages[i] = params.Messages[i]
 	}
 
 	// initialize or append message with given prompt
-	msg_len := i
+	messages[i] = createUserMessage(params.UserPrompt)
+	msg_len := i + 1
 
 	logger.Info("Starting new LLM agent loop.")
 	logger.Info(fmt.Sprintf("Prompt: '%s'", params.UserPrompt))
 
 	for {
-		if msg_len >= 100 {
-			message := "Message count reached >= 100. Time to increase array size."
+		if msg_len >= 250 {
+			message := "Message count reached >= 250. Time to increase array size."
 			logger.Error(message)
 			fmt.Println(params.Writers.Err, message)
-			return 1
+			result.Retcode = 1
+			result.Messages = messages
+			return
 		}
 
 		// Timeout is only for single stream in the agent loop
@@ -151,7 +141,10 @@ func RunAgentLoop(params AgentLoopParams) (exitcode int) {
 			timeout := "stream timed out (> 3 minutes)"
 			logger.Error(timeout)
 			fmt.Fprintf(params.Writers.Err, "%s\n", timeout)
-			return 1
+
+			result.Messages = messages
+			result.Retcode = 1
+			return
 
 		case errors.Is(ctxErr, core.CancelSignalError):
 			logger.Error(ctxErr.Error())
@@ -162,13 +155,19 @@ func RunAgentLoop(params AgentLoopParams) (exitcode int) {
 		if err = stream.Err(); err != nil {
 			logger.Error(err.Error())
 			fmt.Fprintf(params.Writers.Err, "%v\n", err)
-			return 1
+
+			result.Messages = messages
+			result.Retcode = 1
+			return
 		}
 
 		if len(acc.Choices) == 0 {
 			logger.Error("No choices in LLM response.")
 			fmt.Fprintln(params.Writers.Err, "Error: No choices in LLM response")
-			return 1
+
+			result.Messages = messages
+			result.Retcode = 1
+			return
 		}
 
 		choice := acc.Choices[0]
@@ -199,7 +198,10 @@ func RunAgentLoop(params AgentLoopParams) (exitcode int) {
 						// TODO send back to llm or return ?
 						logger.Info("User did not allow tool call")
 						fmt.Fprintf(params.Writers.Err, "User did not allow tool call")
-						return 1
+
+						result.Messages = messages
+						result.Retcode = 1
+						return
 					}
 				}
 
@@ -215,12 +217,18 @@ func RunAgentLoop(params AgentLoopParams) (exitcode int) {
 					timeout := "tool execution timed out (> 5 minutes)"
 					logger.Error(timeout)
 					fmt.Fprintf(params.Writers.Err, "%s\n", timeout)
-					return 1
+
+					result.Messages = messages
+					result.Retcode = 1
+					return
 
 				case errors.Is(ctxErr, core.CancelSignalError):
 					logger.Error(ctxErr.Error())
 					fmt.Fprintf(params.Writers.Err, "Note: execution of tool %s aborted due to interruption", tool_call.Function.Name)
-					return 1
+
+					result.Messages = messages
+					result.Retcode = 1
+					return
 
 				}
 
@@ -278,7 +286,9 @@ func RunAgentLoop(params AgentLoopParams) (exitcode int) {
 		}
 	}
 
-	return 0
+	result.Messages = messages
+	result.Retcode = 0
+	return
 }
 
 func GetClient() openai.Client {
@@ -327,31 +337,6 @@ func createDeveloperMessage(prompt string) openai.ChatCompletionMessageParamUnio
 			Content: openai.ChatCompletionDeveloperMessageParamContentUnion{
 				OfString: openai.String(prompt),
 			},
-		},
-	}
-}
-
-func createAssistantMessage(text string, tools_requested []core.ToolCallRequest) openai.ChatCompletionMessageParamUnion {
-	tool_calls := make([]openai.ChatCompletionMessageToolCallUnionParam, len(tools_requested))
-
-	for idx, tool := range tools_requested {
-		tool_calls[idx] = openai.ChatCompletionMessageToolCallUnionParam{
-			OfFunction: &openai.ChatCompletionMessageFunctionToolCallParam{
-				ID: tool.Id,
-				Function: openai.ChatCompletionMessageFunctionToolCallFunctionParam{
-					Arguments: tool.Params,
-					Name:      tool.Name,
-				},
-			},
-		}
-	}
-
-	return openai.ChatCompletionMessageParamUnion{
-		OfAssistant: &openai.ChatCompletionAssistantMessageParam{
-			Content: openai.ChatCompletionAssistantMessageParamContentUnion{
-				OfString: openai.String(text),
-			},
-			ToolCalls: tool_calls,
 		},
 	}
 }

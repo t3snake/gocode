@@ -32,6 +32,10 @@
 
 ## Completed list
 
+- [x] **Use tui specific Message types**
+- [x] **Add jev mini library**
+- [x] Polish some rough edges in UI
+- [x] **Add tool call display in TUI (Unpolished)**
 - [x] Fix missed bug `tool_call.AsFunction().x` works on the llm raw json, instead use `tool_call.Function.x`
 - [x] Fix duplicate response rendering, double user message since history also includes current prompt
 - [x] Fix auto scroll even when streaming but empty chunk

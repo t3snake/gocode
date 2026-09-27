@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 
 	// bubble tea tui fwk
 
@@ -19,7 +18,12 @@ import (
 
 	"charm.land/lipgloss/v2"
 
-	"github.com/t3snake/gocode/src/chatcompletion"
+	// openai sdk for chatcompletions
+
+	"github.com/openai/openai-go/v3"
+
+	// internal packages
+
 	"github.com/t3snake/gocode/src/core"
 	"github.com/t3snake/gocode/src/logger"
 )
@@ -39,75 +43,27 @@ func StartTUI() {
 	}
 }
 
-// ----- Bridge between TUI and calls to LLM -----
-
-// ChatResult is a wrapper that wraps the final result from
-type ChatResult struct {
-	out    string
-	err    string
-	is_err bool
-}
-
-type ChatStream struct {
-	llm_msg core.Llm2Tui
-}
-
-// Runs agent loop using openai chat completion API
-func promptLlm(prompt string, prev_messages []core.GocodeMessage, ctx context.Context, tui2llm chan core.Tui2Llm, llm2tui chan core.Llm2Tui) tea.Cmd {
-	// tea.Cmd can only take fn with empty params so return a function with empty params and use closure
-	// This function runs as a goroutine (handled by bubbletea)
-	// The return is any type, we have to intercept our type in Update function
-	return func() tea.Msg {
-		var display_out strings.Builder
-		var display_err strings.Builder
-
-		client := chatcompletion.GetClient()
-
-		agent_loop_params := chatcompletion.AgentLoopParams{
-			Client:     client,
-			Ctx:        ctx,
-			UserPrompt: prompt,
-			Messages:   prev_messages,
-			Writers: core.Writers{
-				Out: &display_out,
-				Err: &display_err,
-			},
-			LlmToTui: llm2tui,
-			TuiToLlm: tui2llm,
-		}
-
-		retcode := chatcompletion.RunAgentLoop(agent_loop_params)
-
-		select {
-		case <-ctx.Done():
-			return ChatResult{
-				out:    display_out.String(),
-				err:    display_err.String(),
-				is_err: retcode != 0,
-			}
-
-		default:
-			return ChatResult{
-				out:    display_out.String(),
-				err:    display_err.String(),
-				is_err: retcode != 0,
-			}
-		}
-
-	}
-}
-
-func listenLlmStream(llm2tui chan core.Llm2Tui) tea.Cmd {
-	return func() tea.Msg {
-		stream_chunk := <-llm2tui
-
-		return ChatStream{
-			llm_msg: stream_chunk,
-		}
-	}
-}
-
 // ----- Main TUI Model Update View logic -----
+type TuiMsgType uint8
+
+const (
+	USER TuiMsgType = iota
+	LLM
+	REASONING
+	TOOLCALL
+)
+
+// TuiMessage represents the structure to be represented in TUI.
+type TuiMessage struct {
+	msg_type      TuiMsgType
+	is_empty      bool   // Initially this is true, if any change happens will become false
+	is_error      bool   // Initially false, true if there is an issue
+	content       string // Relevant when [TuiMessage.msg_type] is [USER], [LLM] or [REASONING]
+	error_content string // Relevant when [TuiMessage.is_error] is true
+	tool_name     string // Relevant when [TuiMessage.msg_type] is [TOOLCALL]
+	tool_args     string // Relevant when [TuiMessage.msg_type] is [TOOLCALL]
+	tool_result   string // Relevant when [TuiMessage.msg_type] is [TOOLCALL]
+}
 
 // ChatState TUI main state
 type ChatState struct {
@@ -123,13 +79,12 @@ type ChatState struct {
 
 	// messages (history) and currently streaming message
 
-	messages []core.GocodeMessage
+	message_history []openai.ChatCompletionMessageParamUnion
 
-	// Represents Assistant Message role that acculumates with streaming and is later appended to [ChatState.messages]
-	current_message core.GocodeMessage
+	tui_messages []TuiMessage
 
-	// Represents results for requested tool calls, if multiple need to track separately and when Assistant Message loop is finished, append to  [ChatState.messages] with role Tool
-	tool_results []core.ToolCallResult
+	// Represents LLM Message that acculumates with streaming and is later appended to [ChatState.tui_messages]
+	current_message TuiMessage
 
 	token_spend int
 
@@ -202,18 +157,19 @@ func initialModel(llm2tui chan core.Llm2Tui, tui2llm chan core.Tui2Llm) ChatStat
 		prompt:   ta,
 		viewport: vp,
 
-		messages: []core.GocodeMessage{},
-		current_message: core.GocodeMessage{
-			MsgRole:        core.ASSISTANT,
-			IsError:        false,
-			Id:             5,
-			DisplayText:    "",
-			ErrorText:      "",
-			ToolsRequested: []core.ToolCallRequest{},
-			ToolResult:     core.ToolCallResult{},
-		},
+		message_history: []openai.ChatCompletionMessageParamUnion{},
 
-		tool_results: []core.ToolCallResult{},
+		tui_messages: []TuiMessage{},
+		current_message: TuiMessage{
+			msg_type:      LLM,
+			is_empty:      true,
+			is_error:      false,
+			content:       "",
+			error_content: "",
+			tool_name:     "",
+			tool_args:     "",
+			tool_result:   "",
+		},
 
 		is_loading: false,
 		spinner:    s,
@@ -235,7 +191,6 @@ func initialModel(llm2tui chan core.Llm2Tui, tui2llm chan core.Tui2Llm) ChatStat
 
 func (c ChatState) Init() tea.Cmd {
 	// start listener immediately
-	// startea.Batch(t listener imm, listenLlmStream(c.llm2tui))ediately
 	return tea.Batch(textarea.Blink, listenLlmStream(c.llm2tui))
 }
 
@@ -279,7 +234,8 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ChatStream:
 		if msg.llm_msg.IsChunk && len(msg.llm_msg.ChunkContent) != 0 {
-			c.current_message.DisplayText += msg.llm_msg.ChunkContent
+			c.current_message.content += msg.llm_msg.ChunkContent
+			c.current_message.is_empty = false
 
 			// only rerender when there is a chunk content
 			content := renderChatMessages(c)
@@ -288,13 +244,19 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if msg.llm_msg.IsToolCall {
-			// store requested tools in current message, fix order when ChatResult is returned
-			c.current_message.ToolsRequested = append(c.current_message.ToolsRequested, core.ToolCallRequest{
-				Id:        msg.llm_msg.ToolId,
-				Name:      msg.llm_msg.ToolName,
-				Params:    msg.llm_msg.ToolParams,
-				ResultRef: nil,
-			})
+			if c.current_message.msg_type == LLM && !c.current_message.is_empty {
+				// append previous message if non empty and msg_type is LLM
+				c.tui_messages = append(c.tui_messages, c.current_message)
+			}
+
+			// Note: TOOLCALL msg should have been appended already, IF the result came, else just ignore it
+
+			// Tool Call requested case, reset current_message as TOOLCALL and store name and params
+			c.current_message = resetCurrentMessage(TOOLCALL)
+			c.current_message.tool_name = msg.llm_msg.ToolName
+			c.current_message.tool_args = msg.llm_msg.ToolParams
+			c.current_message.tool_result = ""
+			c.current_message.is_empty = false
 
 			if c.tui2llm != nil {
 				// TODO(t3snake): implement tool call user interaction allow-reject
@@ -310,38 +272,23 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if msg.llm_msg.IsToolResult {
-			result := core.ToolCallResult{
-				Id:     msg.llm_msg.ToolId,
-				Result: msg.llm_msg.ToolResult,
+			if c.current_message.msg_type != TOOLCALL {
+				logger.Error("ToolResult path called and current message is not of type TOOLCALL")
+				c.current_message.error_content = "Erronous state with tool result, check logs"
+			} else {
+				c.current_message.tool_result = msg.llm_msg.ToolResult
 			}
 
-			for _, reqtool := range c.current_message.ToolsRequested {
-				if reqtool.Id == result.Id {
-					// link the tool request and result
-					result.RequestRef = &reqtool
-					reqtool.ResultRef = &result
-					break
-				}
-			}
-
-			c.tool_results = append(c.tool_results, result)
+			c.tui_messages = append(c.tui_messages, c.current_message)
+			c.current_message = resetCurrentMessage(LLM)
 		}
 
 		if msg.llm_msg.IsLoopDone {
 			// append the assistant role message
-			c.messages = append(c.messages, c.current_message)
-
-			// append tool results if any
-			for _, tool_result := range c.tool_results {
-				c.messages = append(c.messages, core.GocodeMessage{
-					MsgRole:    core.TOOL,
-					ToolResult: tool_result,
-				})
+			if !c.current_message.is_empty {
+				c.tui_messages = append(c.tui_messages, c.current_message)
+				c.current_message = resetCurrentMessage(LLM)
 			}
-
-			c.current_message = resetCurrentMessage(uint8(len(c.messages)))
-
-			c.tool_results = []core.ToolCallResult{}
 		}
 
 		// always have it active, by reopening listener immediately when returned
@@ -350,11 +297,17 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return c, cmd
 
 	case ChatResult:
-		c.current_message.IsError = msg.is_err
-		c.current_message.ErrorText = msg.err
+		if msg.is_err {
+			c.current_message.is_error = true
+			c.current_message.error_content = msg.err
+			c.current_message.is_empty = false
+		}
 
-		c.messages = append(c.messages, c.current_message)
-		c.current_message = resetCurrentMessage(c.current_message.Id + 1)
+		if !c.current_message.is_empty {
+			c.tui_messages = append(c.tui_messages, c.current_message)
+		}
+
+		c.current_message = resetCurrentMessage(LLM)
 
 		c.is_loading = false
 
@@ -392,17 +345,13 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			c.is_loading = true
 			c.prompt.Reset()
-			c.messages = append(c.messages,
-				core.GocodeMessage{
-					MsgRole:     core.USER,
-					Id:          uint8(len(c.messages)),
-					DisplayText: prompt,
-					IsError:     false,
-					ErrorText:   "",
-				},
-			)
 
-			c.current_message = resetCurrentMessage(uint8(len(c.messages)))
+			user_msg := resetCurrentMessage(USER)
+			user_msg.content = prompt
+
+			c.tui_messages = append(c.tui_messages, user_msg)
+
+			c.current_message = resetCurrentMessage(LLM)
 
 			// while is loading, let viewport scroll (j, k vim binds)
 			c.viewport.KeyMap.Down.SetEnabled(true)
@@ -417,7 +366,7 @@ func (c ChatState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			return c, tea.Batch(
 				c.spinner.Tick,
-				promptLlm(prompt, c.messages, c.ctx, c.tui2llm, c.llm2tui),
+				promptLlm(prompt, c.message_history, c.ctx, c.tui2llm, c.llm2tui),
 			)
 
 		case "esc":
@@ -486,7 +435,13 @@ func (c ChatState) View() tea.View {
 	v.BackgroundColor = c.theme.TerminalBackground
 	v.ForegroundColor = c.theme.Text
 	v.AltScreen = true
-	v.MouseMode = tea.MouseModeCellMotion
+
+	// TODO move to fully programmed selection handling for the TUI
+	if c.is_selecting {
+		v.MouseMode = tea.MouseModeNone
+	} else {
+		v.MouseMode = tea.MouseModeCellMotion
+	}
 
 	cr := c.prompt.Cursor()
 	if cr != nil {
@@ -512,31 +467,37 @@ func renderChatMessages(c ChatState) (content string) {
 	)
 	defer glam.Close()
 
-	for _, msg := range c.messages {
-		switch msg.MsgRole {
-		case core.USER:
+	for _, msg := range c.tui_messages {
+		switch msg.msg_type {
+		case USER:
 			content += c.user_style.
 				Width(msg_width).
-				Render(msg.DisplayText) + "\n"
+				Render(msg.content) + "\n"
 
-		case core.ASSISTANT:
-			postfix := ""
-			if msg.IsError {
-				postfix = lipgloss.NewStyle().
-					Foreground(Color(CTPC_RED)).
-					Render(fmt.Sprintf("\nError: %s", msg.ErrorText))
+		case LLM:
+			if msg.is_empty {
+				break // Note: does not break for, only skips rest of the code in this case
 			}
 
-			glamout, err := glam.Render(msg.DisplayText)
+			postfix := ""
+			if msg.is_error {
+				postfix = lipgloss.NewStyle().
+					Foreground(Color(CTPC_RED)).
+					Render(fmt.Sprintf("\nError: %s", msg.error_content))
+			}
+
+			glamout, err := glam.Render(msg.content)
 			if err != nil {
 				logger.Error(err.Error())
 			}
 			content += glamout + postfix + "\n"
-		case core.DEVELOPER:
-		case core.TOOL:
+
+		case REASONING: // TODO
+
+		case TOOLCALL:
 			content += c.tool_style.
 				AlignHorizontal(lipgloss.Position(lipgloss.Center)).
-				Render(fmt.Sprintf("✔ %s %s", msg.ToolResult.RequestRef.Name, msg.ToolResult.RequestRef.Params))
+				Render(fmt.Sprintf("✔ %s %s", msg.tool_name, msg.tool_args))
 
 		default:
 			panic("unhandled default case")
@@ -544,41 +505,35 @@ func renderChatMessages(c ChatState) (content string) {
 	}
 
 	// render currently streaming message
-	if len(c.current_message.DisplayText) != 0 {
-		glamout, err := glam.Render(c.current_message.DisplayText)
-		if err != nil {
-			logger.Error(err.Error())
-		} else {
-			content += glamout + "\n"
+	if !c.current_message.is_empty && len(c.current_message.content) != 0 {
+		if c.current_message.msg_type == LLM {
+			glamout, err := glam.Render(c.current_message.content)
+			if err != nil {
+				logger.Error(err.Error())
+			} else {
+				content += glamout + "\n"
+			}
 		}
-	}
 
-	for _, tool := range c.current_message.ToolsRequested {
-		if tool.ResultRef != nil {
+		if c.current_message.msg_type == TOOLCALL {
 			content += c.tool_style.
 				AlignHorizontal(lipgloss.Position(lipgloss.Center)).
-				Render(fmt.Sprintf("✔ %s %s", tool.Name, tool.Params))
-		} else {
-			content += c.tool_style.
-				AlignHorizontal(lipgloss.Position(lipgloss.Center)).
-				Render(fmt.Sprintf("☯ %s %s", tool.Name, tool.Params))
+				Render(fmt.Sprintf("☯ %s %s", c.current_message.tool_name, c.current_message.tool_args))
 		}
 	}
 
 	return content
 }
 
-func resetCurrentMessage(new_id uint8) core.GocodeMessage {
-	return core.GocodeMessage{
-		MsgRole:        core.ASSISTANT,
-		DisplayText:    "",
-		ErrorText:      "",
-		IsError:        false,
-		Id:             new_id,
-		ToolsRequested: []core.ToolCallRequest{},
-		ToolResult: core.ToolCallResult{
-			Id:     "",
-			Result: "",
-		},
+func resetCurrentMessage(msg_type TuiMsgType) TuiMessage {
+	return TuiMessage{
+		msg_type:      msg_type,
+		is_empty:      true,
+		is_error:      false,
+		content:       "",
+		error_content: "",
+		tool_name:     "",
+		tool_args:     "",
+		tool_result:   "",
 	}
 }

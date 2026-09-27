@@ -51,29 +51,3 @@ const (
 	TOOL
 	DEVELOPER
 )
-
-// ToolCallRequest Struct representing tool calls requested by LLM in Assistant Role response
-type ToolCallRequest struct {
-	Id        string          // Unique Id assigned by LLMs and the result is linked based on this Id
-	Name      string          // Name of the tool that was requested
-	Params    string          // Params with which the requested tool should be called. Will be migrated to map[string]string
-	ResultRef *ToolCallResult // Pointer to matching [ToolCallRequest]
-}
-
-// ToolCallResult Struct representing tool result reported back to LLM for a tool call requested by the LLM
-type ToolCallResult struct {
-	Id         string           // Unique Id that corresponds to the ToolCallRequest.Id
-	Result     string           // The tool response
-	RequestRef *ToolCallRequest // Pointer to matching [ToolCallResult]
-}
-
-// GocodeMessage Struct representing user and chat-agent/llm messages
-type GocodeMessage struct {
-	MsgRole        Role   // 0 USER, 1 ASSISTANT, 2 TOOL, 3 DEVELOPER
-	Id             uint8  // unique identifier, currently only 256 messages possible
-	DisplayText    string // message
-	IsError        bool
-	ErrorText      string            // non null only when IsError is true
-	ToolsRequested []ToolCallRequest // non null only when MsgRole is Assistant/1 and toolcalls were requested
-	ToolResult     ToolCallResult    // should be non null when MsgRole is 2 (TOOL)
-}

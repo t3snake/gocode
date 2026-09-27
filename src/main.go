@@ -58,9 +58,9 @@ func main() {
 			TuiToLlm: nil,
 		}
 
-		retcode := chatcompletion.RunAgentLoop(agent_loop_params)
+		result := chatcompletion.RunAgentLoop(agent_loop_params)
 
-		os.Exit(retcode)
+		os.Exit(result.Retcode)
 	}
 
 	logger.Info("gocode started in TUI mode.")
