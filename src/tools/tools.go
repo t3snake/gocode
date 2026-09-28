@@ -30,7 +30,7 @@ func ExecuteToolCall(toolcall openai.ChatCompletionMessageToolCallUnion, ctx con
 	var arg_map map[string]any
 	err := json.Unmarshal([]byte(toolcall.Function.Arguments), &arg_map)
 	if err != nil {
-		return "", fmt.Errorf("Error while parsing arguments: %s\n", err.Error())
+		return "", fmt.Errorf("Error while parsing arguments: %w\n", err)
 	}
 
 	fnname := toolcall.Function.Name
@@ -181,7 +181,7 @@ func RunTerminalCommandRegistration() openai.ChatCompletionToolUnionParam {
 		OfFunction: &openai.ChatCompletionFunctionToolParam{
 			Function: openai.FunctionDefinitionParam{
 				Name:        RunCommandToolName,
-				Description: openai.String("Execute a shell command"),
+				Description: openai.String(description),
 				Parameters: openai.FunctionParameters{
 					"type": "object",
 					"properties": map[string]any{

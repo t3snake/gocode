@@ -2,16 +2,14 @@
 
 ### NOW
 
-- [ ] Add tool call display in viewport
-- [ ] Just append to streaming message instead of re-rendering whole viewport
-- [ ] Start a new process without polluting main context for some tasks like readFile
 - [ ] Use jev to decide if tool call should be in subagent or not
+- [ ] Polish tool call display in viewport
+- [ ] Add tool call prompt for user
 
 ### Very soon
 
 - [ ] Add tokens, context window info
 - [ ] /new to clear context (currently always clear context)
-- [ ] Add tool call prompt for user
 - [ ] Add startup settings as json config initially, then move to settings menu
 - [ ] TODO tool
 - [ ] Web search tool using DDG
@@ -19,11 +17,13 @@
 - [ ] Add either cancel recovery -> recovers prompt in promptbox on cancellation or better up for history of prompts
 - [ ] Save file for sessions
 - [ ] Add more themes
+- [ ] Start a new process (subagent) without polluting main context for some tasks like readFile
 
 ### Later
 
-- [ ] Delete specific context from message history - has to be assistant + user message (2 consecutive assistant messages will fail)
 - [ ] MCP Support
+- [ ] Just append to streaming message instead of re-rendering whole viewport
+- [ ] Delete specific context from message history - has to be assistant + user message (2 consecutive assistant messages will fail)
 - [ ] Chat navigation using arrows/vim bindings
 - [ ] Add settings, dialogs ?
 - [ ] Add changing log levels during runtime (hide/show tool output option in settings)
@@ -32,6 +32,7 @@
 
 ## Completed list
 
+- [x] Many bug fixes and `AGENTS.md` support and upfront `ls` and `pwd` data.
 - [x] **Use tui specific Message types**
 - [x] **Add jev mini library**
 - [x] Polish some rough edges in UI
