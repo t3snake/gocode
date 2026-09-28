@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/t3snake/gocode/src/core"
+	"github.com/t3snake/gocode/src/jev"
 	"github.com/t3snake/gocode/src/logger"
 	"github.com/t3snake/gocode/src/tools"
 
@@ -39,8 +40,10 @@ func RunAgentLoop(params AgentLoopParams) (result AgentLoopResult) {
 	// TODO add developer prompt, customizable?
 	messages := make([]openai.ChatCompletionMessageParamUnion, core.MessageSizeLimit)
 
+	is_new_session := false
 	i := 0
 	if len(params.Messages) == 0 {
+		is_new_session = true
 		messages[0] = createDeveloperMessage(getSystemPrompt())
 		i++
 	} else {
@@ -53,8 +56,15 @@ func RunAgentLoop(params AgentLoopParams) (result AgentLoopResult) {
 	messages[i] = createUserMessage(params.UserPrompt)
 	msg_len := i + 1
 
+	enable_edit := true
+	if is_new_session {
+		enable_edit = askJevEditNeeded(params.UserPrompt)
+	}
+
+	tool_list := registerTools(enable_edit)
+
 	logger.Info("Starting new LLM agent loop.")
-	logger.Info(fmt.Sprintf("Prompt: '%s'", params.UserPrompt))
+	logger.Infof("Prompt: '%s'", params.UserPrompt)
 
 	for {
 		if msg_len >= 250 {
@@ -74,7 +84,7 @@ func RunAgentLoop(params AgentLoopParams) (result AgentLoopResult) {
 			openai.ChatCompletionNewParams{
 				Model:    core.ModelName,
 				Messages: messages[:msg_len],
-				Tools:    registerTools(),
+				Tools:    tool_list,
 				StreamOptions: openai.ChatCompletionStreamOptionsParam{
 					IncludeObfuscation: openai.Bool(true),
 					IncludeUsage:       openai.Bool(true),
@@ -154,13 +164,13 @@ func RunAgentLoop(params AgentLoopParams) (result AgentLoopResult) {
 			return
 
 		case errors.Is(ctxErr, core.CancelSignalError):
-			logger.Error(ctxErr.Error())
-			fmt.Fprintf(params.Writers.Err, "%s\n", ctxErr.Error())
+			logger.Errorf("%v", ctxErr)
+			fmt.Fprintf(params.Writers.Err, "%v\n", ctxErr)
 
 		}
 
 		if err = stream.Err(); err != nil {
-			logger.Error(err.Error())
+			logger.Errorf("%v", err)
 			fmt.Fprintf(params.Writers.Err, "%v\n", err)
 
 			result.Messages = messages[:msg_len]
@@ -230,7 +240,7 @@ func RunAgentLoop(params AgentLoopParams) (result AgentLoopResult) {
 					return
 
 				case errors.Is(ctxErr, core.CancelSignalError):
-					logger.Error(ctxErr.Error())
+					logger.Warningf("Note: execution of tool %s aborted due to interruption", tool_call.Function.Name)
 					fmt.Fprintf(params.Writers.Err, "Note: execution of tool %s aborted due to interruption", tool_call.Function.Name)
 
 					result.Messages = messages[:msg_len]
@@ -240,7 +250,7 @@ func RunAgentLoop(params AgentLoopParams) (result AgentLoopResult) {
 				}
 
 				if err != nil {
-					logger.Error(err.Error())
+					logger.Errorf("%v", err)
 					fmt.Fprintf(params.Writers.Err, "%s\n", err.Error())
 
 					messages[msg_len] = createToolMessage(tool_call.ID, err.Error())
@@ -318,11 +328,18 @@ func GetClient() openai.Client {
 }
 
 // Register list of tools to be advertised to the LLM
-func registerTools() []openai.ChatCompletionToolUnionParam {
-	return []openai.ChatCompletionToolUnionParam{
-		tools.ReadFileRegistration(),
-		tools.WriteFileRegistration(),
-		tools.RunTerminalCommandRegistration(),
+func registerTools(enable_edit bool) []openai.ChatCompletionToolUnionParam {
+	if enable_edit {
+		return []openai.ChatCompletionToolUnionParam{
+			tools.ReadFileRegistration(),
+			tools.WriteFileRegistration(),
+			tools.RunTerminalCommandRegistration(),
+		}
+	} else {
+		return []openai.ChatCompletionToolUnionParam{
+			tools.ReadFileRegistration(),
+			tools.RunTerminalCommandRegistration(),
+		}
 	}
 }
 
@@ -441,4 +458,43 @@ func initLlm2Tui() core.Llm2Tui {
 
 		IsLoopDone: false,
 	}
+}
+
+func askJevEditNeeded(prompt string) bool {
+	client, err := jev.NewClient()
+	if err != nil {
+		logger.Errorf("%v", err)
+		return true
+	}
+
+	questions := make(map[string]jev.Question)
+
+	questions["isEditNeeded"] = jev.Question{
+		Type:         jev.Noul,
+		Instructions: "Does this prompt in the agent require edit tool capabilities?",
+	}
+
+	response, err := client.Evaluate(context.TODO(), prompt, questions)
+	if err != nil {
+		logger.Errorf("%v", err)
+		return true
+	}
+
+	ans, ok := response.Answers["isEditNeeded"]
+	if !ok {
+		logger.Error("isEditNeeded key not present in the answer")
+		return true
+	}
+
+	if ans.Type != jev.Noul {
+		logger.Error("isEditNeeded keyed answer not of type noul (unexpected)")
+		return true
+	}
+
+	if ans.Noul > 0.6 {
+		return true
+	} else {
+		return false
+	}
+
 }

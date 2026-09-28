@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/t3snake/gocode/src/core"
+	"github.com/t3snake/gocode/src/logger"
 )
 
 type QuestionType string
@@ -116,10 +117,11 @@ func (c *Client) Evaluate(ctx context.Context, state any, questions map[string]Q
 	}
 
 	requestBody, err := json.Marshal(jev_body)
-
 	if err != nil {
 		return JevResponse{}, fmt.Errorf("jev: encode request: %w", err)
 	}
+
+	logger.Infof("Jev request body:\n%s", string(requestBody[:]))
 
 	request, err := http.NewRequestWithContext(
 		ctx,
@@ -136,7 +138,6 @@ func (c *Client) Evaluate(ctx context.Context, state any, questions map[string]Q
 	request.Header.Set("Content-Type", "application/json")
 
 	response, err := c.http_client.Do(request)
-
 	if err != nil {
 		return JevResponse{}, fmt.Errorf("jev: send request: %w", err)
 	}
@@ -150,15 +151,18 @@ func (c *Client) Evaluate(ctx context.Context, state any, questions map[string]Q
 		return JevResponse{}, fmt.Errorf("jev: read response: %w", err)
 	}
 
+	logger.Infof("Jev request status code: %d", response.StatusCode)
+
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return JevResponse{}, &APIError{StatusCode: response.StatusCode, Body: string(data)}
 	}
 
 	var result JevResponse
-
 	if err := json.Unmarshal(data, &result); err != nil {
 		return JevResponse{}, fmt.Errorf("jev: decode response: %w", err)
 	}
+
+	logger.Infof("Jev response: %s", string(data[:]))
 
 	if len(result.Answers) != len(questions) {
 		return JevResponse{}, fmt.Errorf("jev: got %d answers for %d questions", len(result.Answers), len(questions))

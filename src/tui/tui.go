@@ -491,7 +491,7 @@ func renderChatMessages(c ChatState) (content string) {
 
 			glamout, err := glam.Render(msg.content)
 			if err != nil {
-				logger.Error(err.Error())
+				logger.Errorf("%v", err)
 			}
 			content += glamout + postfix + "\n"
 
@@ -512,7 +512,7 @@ func renderChatMessages(c ChatState) (content string) {
 		if c.current_message.msg_type == LLM {
 			glamout, err := glam.Render(c.current_message.content)
 			if err != nil {
-				logger.Error(err.Error())
+				logger.Errorf("%v", err)
 			} else {
 				content += glamout + "\n"
 			}

@@ -73,27 +73,86 @@ func TestCreateToolMessage(t *testing.T) {
 }
 
 func TestCreateAssistantMessage(t *testing.T) {
-	tests := []struct {
-		name    string
-		message string
-	}{
-		{"text", `{"role":"assistant","content":"Hello\n世界"}`},
-		{"empty", `{"role":"assistant"}`},
-		{"refusal", `{"role":"assistant","refusal":"Cannot complete this request."}`},
-		{"tool calls", `{"role":"assistant","tool_calls":[{"id":"call_read","type":"function","function":{"name":"read_file","arguments":"{\"file_path\":\"a.txt\"}"}},{"id":"call_write","type":"function","function":{"name":"write_file","arguments":"{\"file_path\":\"b.txt\",\"content\":\"hello\"}"}}]}`},
-		{"text and tool call", `{"role":"assistant","content":"Reading the file.","tool_calls":[{"id":"call_1","type":"function","function":{"name":"read_file","arguments":"{}"}}]}`},
+	read_call := openai.ChatCompletionMessageToolCallUnion{
+		ID:   "call_read",
+		Type: "function",
+		Function: openai.ChatCompletionMessageFunctionToolCallFunction{
+			Name:      "read_file",
+			Arguments: `{"file_path":"a.txt"}`,
+		},
 	}
-	for _, tt := range tests {
+	write_call := openai.ChatCompletionMessageToolCallUnion{
+		ID:   "call_write",
+		Type: "function",
+		Function: openai.ChatCompletionMessageFunctionToolCallFunction{
+			Name:      "write_file",
+			Arguments: `{"file_path":"b.txt","content":"hello"}`,
+		},
+	}
+
+	test_cases := []struct {
+		name     string
+		response openai.ChatCompletionMessage
+		expected map[string]any
+	}{
+		{
+			name:     "text",
+			response: openai.ChatCompletionMessage{Content: "Hello\n世界"},
+			expected: map[string]any{"role": "assistant", "content": "Hello\n世界"},
+		},
+		{
+			name:     "empty",
+			response: openai.ChatCompletionMessage{},
+			expected: map[string]any{"role": "assistant"},
+		},
+		{
+			name:     "refusal",
+			response: openai.ChatCompletionMessage{Refusal: "Cannot complete this request."},
+			expected: map[string]any{
+				"role": "assistant", "refusal": "Cannot complete this request.",
+			},
+		},
+		{
+			name:     "tool calls",
+			response: openai.ChatCompletionMessage{ToolCalls: []openai.ChatCompletionMessageToolCallUnion{read_call, write_call}},
+			expected: map[string]any{
+				"role": "assistant",
+				"tool_calls": []any{
+					map[string]any{
+						"id": "call_read", "type": "function",
+						"function": map[string]any{"name": "read_file", "arguments": `{"file_path":"a.txt"}`},
+					},
+					map[string]any{
+						"id": "call_write", "type": "function",
+						"function": map[string]any{"name": "write_file", "arguments": `{"file_path":"b.txt","content":"hello"}`},
+					},
+				},
+			},
+		},
+		{
+			name: "text and tool call",
+			response: openai.ChatCompletionMessage{
+				Content: "Reading the file.",
+				ToolCalls: []openai.ChatCompletionMessageToolCallUnion{{
+					ID: "call_1", Type: "function",
+					Function: openai.ChatCompletionMessageFunctionToolCallFunction{
+						Name: "read_file", Arguments: "{}",
+					},
+				}},
+			},
+			expected: map[string]any{
+				"role": "assistant", "content": "Reading the file.",
+				"tool_calls": []any{map[string]any{
+					"id": "call_1", "type": "function",
+					"function": map[string]any{"name": "read_file", "arguments": "{}"},
+				}},
+			},
+		},
+	}
+	for _, tt := range test_cases {
 		t.Run(tt.name, func(t *testing.T) {
-			var response openai.ChatCompletionChoice
-			if err := json.Unmarshal([]byte(tt.message), &response.Message); err != nil {
-				t.Fatal(err)
-			}
-			var want any
-			if err := json.Unmarshal([]byte(tt.message), &want); err != nil {
-				t.Fatal(err)
-			}
-			assertJSON(t, createAssistantMessageFromResponse(response), want)
+			response := openai.ChatCompletionChoice{Message: tt.response}
+			assertJSON(t, createAssistantMessageFromResponse(response), tt.expected)
 		})
 	}
 }
