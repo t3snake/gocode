@@ -16,6 +16,9 @@ const ToolResultLogTruncLimit = 300 // The number of characters after which the 
 
 const JevModelName = "jev-latest"
 const JevEndpoint = "https://api.typesafe.ai/v1/systemone"
+
 const LocalLlmEndpoint = "http://localhost:3434/v1"
+
+const OpenAiSiwcAuthEndpoint = "https://auth.openai.com/api/accounts/authorize"
 
 const ModelName = "Qwen3.6-35B-A3B-UD-IQ4_XS.gguf"
