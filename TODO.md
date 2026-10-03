@@ -2,7 +2,8 @@
 
 ### NOW
 
-- [ ] Use jev to decide if tool call should be in subagent or not
+- [ ] Finish SIWC (Sign In With Chatgpt) flow
+- [ ] Implement Responses API for ChatGPT new model communication
 - [ ] Polish tool call display in viewport
 - [ ] Add tool call prompt for user
 
@@ -13,6 +14,8 @@
 - [ ] Add startup settings as json config initially, then move to settings menu
 - [ ] TODO tool
 - [ ] Web search tool using DDG
+- [ ] Add subagent tool
+- [ ] Use jev to decide if tool call should be in subagent or not
 - [ ] Fix selections - move to native selections (figure out text, figure out background and mouse position etc), cant turn back mouse mode once disabled
 - [ ] Add either cancel recovery -> recovers prompt in promptbox on cancellation or better up for history of prompts
 - [ ] Save file for sessions

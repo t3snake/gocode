@@ -1,4 +1,18 @@
-# Repository notes
+# GoCode 
+
+Coding Agent from ~scratch written in Golang.
+Not fully without dependencies, currently use openai sdk, bubbletea, bubbles, lipgloss.
+In future will also use MCP SDK.
+Might move to everything from scratch but not a priority right now.
+
+## Repository ground rules
+
+- Prefer using `ASD-STE100` to explain concepts as much as possible, only use other words for proper nouns and such.
+- Use `snake_case` for local variables; do not rename API types, functions, or struct fields for this convention.
+- For Types use `camelCase` or `PascalCase` based on public or private. Use `snake_case` for non exported fields and `PascalCase` for public/exported fields.
+- Follow the surrounding code's conventions and naming patterns in all files, not just tests. Keep new code consistent with nearby code unless a more specific repository guideline applies.
+- Preserve complete assistant tool-call messages followed by matching tool-result messages; the API and TUI history rely on tool-call IDs to reconnect them.
+- `build/`, `sessionLog.txt`, and `review-md-files/` are generated/ignored outputs, not source.
 
 ## Build and verification
 
@@ -10,7 +24,7 @@
 
 ## Test style
 
-- In Go tests, use `snake_case` for local variables and test-only fixtures; do not rename API types, functions, or struct fields for this convention.
+- **Non tautological tests only**
 - For table-driven tests, declare a named `test_cases := []struct { ... }{ ... }` variable first, then loop with `for _, tt := range test_cases`. Do not put the slice literal directly in the `range` expression.
 
 ## Runtime wiring
@@ -22,9 +36,4 @@
 - The TUI currently auto-approves every requested tool, and prompt mode has no approval channel. A live model can therefore write files or execute commands without a confirmation prompt.
 - The OpenAI-compatible base URL comes from `OPENROUTER_BASE_URL`, defaulting to `http://localhost:3434/v1`; `OPENROUTER_API_KEY` may be empty for local servers. The chat model name is hardcoded in `src/chatcompletion/llm.go`, not selected by an environment variable.
 - `src/jev` is a separate TypeSafe API client. It requires `TYPESAFE_API_KEY`; its tests replace HTTP transport and should not make real API calls.
-
-## Change constraints
-
-- Follow the surrounding code's conventions and naming patterns in all files, not just tests. Keep new code consistent with nearby code unless a more specific repository guideline applies.
-- Preserve complete assistant tool-call messages followed by matching tool-result messages; the API and TUI history rely on tool-call IDs to reconnect them.
-- `build/`, `sessionLog.txt`, and `review-md-files/` are generated/ignored outputs, not source.
+- `research/*` contains research notes for different features. **Dont read this directory unless specifically asked for**.
