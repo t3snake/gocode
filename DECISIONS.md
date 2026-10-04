@@ -21,3 +21,15 @@ This is meant to be a decision log that tries to log all the different decisions
 - Initially selection did not work while mouse mode was on.
 - I added a listener to disable mouse mode when clicked. This fixed selections in most terminals mostly due to their native handling. But terminals like zed it did not work, then I realized that once mouse mode is off, I dont have a hook to disable it which was the problem.
 - I reverted to original but since selection does not work anywhere then, I revert to the second behavior. But ideally need to move to emulating select by natively handling selection and changing the backgrounds for all the text that is selected.
+
+### General
+
+- Settings.json, started from a simple map for JSON marshal and unmarshal, but immediately realized that the settings are finite so there is not much benefit from dynamic and there is too much boiler plate to convert from `any` to specific types.
+- Initially did a map so I could easily add dynamic fields without changing types, but cant avoid coupling so a typed struct is just better and faster for now.
+- I add this in a `gocode` folder within the user config folder which resolves to `~/.config/gocode/*` in linux, `%APPDATA%/gocode/*` in Windows and `$HOME/Library/Application Support/gocode/*` in Mac. Using `os.UserConfigDir()` to get the base.
+- If `gocode` folder is not there it will be created, when trying to store the settings (will happen atleast when the user tries to logon to ChatGPT sub, might change to always at first start up)
+
+### OpenAI - Sign In With ChatGPT (SIWC)
+
+- Implementing SIWC, early and for now made a simple settings.json where I will persist the OAuth tokens for reconnecting on next run.
+- **Will** move to a credentials file that has permissions set so that only this app will have access (not sure about read?). Same as private key is saved in `.ssh` directory.

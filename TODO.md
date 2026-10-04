@@ -4,8 +4,9 @@
 
 - [ ] Finish SIWC (Sign In With Chatgpt) flow
 - [ ] Implement Responses API for ChatGPT new model communication
-- [ ] Polish tool call display in viewport
-- [ ] Add tool call prompt for user
+- [ ] Move persistence of keys from `settings.json` into a separate file with permissions only for the app.
+- [ ] Polish tool call display in viewport.
+- [ ] Add tool call prompt for user.
 
 ### Very soon
 
@@ -35,6 +36,8 @@
 
 ## Completed list
 
+- [x] Add skeleton Sign In With ChatGPT support (SIWC) using OAuth to use ChatGPT sub for Responses API calls.
+- [x] Add first support for `settings.json` file. (currently using it for also persistence)
 - [x] Many bug fixes and `AGENTS.md` support and upfront `ls` and `pwd` data.
 - [x] **Use tui specific Message types**
 - [x] **Add jev mini library**

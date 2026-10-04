@@ -28,21 +28,11 @@ func LoginChatGPT() (retcode int) {
 }
 
 // getStoredClientId returns a stored openai issued client id, if this is a new logon, returns empty string
-func getStoredClientId(settings map[string]any) string {
-	id, ok := settings["openai-client-id"]
-	if !ok {
-		return ""
-	}
-
-	id_str, ok := id.(string)
-	if ok {
-		return id_str
-	}
-
-	return ""
+func getStoredClientId(settings core.Settings) string {
+	return settings.OpenAIClientID
 }
 
-func fillQueryParams(params map[string]string, settings map[string]any, callback_uri string) (pkce_verifier []byte) {
+func fillQueryParams(params map[string]string, settings core.Settings, callback_uri string) (pkce_verifier []byte) {
 	client_id := getStoredClientId(settings)
 	is_new_flow := client_id == ""
 
@@ -58,12 +48,8 @@ func fillQueryParams(params map[string]string, settings map[string]any, callback
 		params["client_id"] = client_id
 
 		// ID Token Hint - only if present in settings or skip
-		token_hint, ok := settings["id-token-hint"]
-		if ok {
-			token_hit_str, ok2 := token_hint.(string)
-			if ok2 {
-				params["id_token_hint"] = token_hit_str
-			}
+		if settings.IDTokenHint != "" {
+			params["id_token_hint"] = settings.IDTokenHint
 		}
 
 		// TODO login_hint=email@example.com ?
@@ -103,20 +89,16 @@ func fillQueryParams(params map[string]string, settings map[string]any, callback
 	return
 }
 
-func getAndPersistHostId(settings map[string]any) string {
-	host, ok := settings["host-id"]
-	if ok {
-		host_str, ok2 := host.(string)
-		if ok2 {
-			return host_str
-		}
+func getAndPersistHostId(settings core.Settings) string {
+	if settings.HostID != "" {
+		return settings.HostID
 	}
 
 	// gen new id, new flow or if persistance failed
 	new_host_id := fmt.Sprintf("urn:uuid:%s", uuid.NewV4().String())
 
 	// save settings after setting host-id
-	settings["host-id"] = new_host_id
+	settings.HostID = new_host_id
 	core.SaveSettings(settings)
 
 	return new_host_id

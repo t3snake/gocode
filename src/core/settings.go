@@ -4,22 +4,30 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"maps"
 	"os"
 )
+
+// Settings holds the values stored in the config file.
+type Settings struct {
+	OpenAIClientID string `json:"openai-client-id,omitempty"`
+	IDTokenHint    string `json:"id-token-hint,omitempty"`
+	HostID         string `json:"host-id,omitempty"`
+}
 
 // Globals
 
 // is_settings_loaded indicates if the settings were already read from the config
 var is_settings_loaded bool = false
 
-// settings represents the settings read from the config
-var settings map[string]any
+// settings represents the settings read from the config file
+var settings Settings
 
-// LoadSettings will read the config json and load the settings map. Also see [GetSettings].
+// LoadSettings will read the config json and load the settings. Also see [GetSettings].
+// If error happened, the settings are not loaded and default values must be used.
+//
+// This function does not create a "settings.json" if the file is not present. That is done in [SaveSettings]
 func LoadSettings() error {
-	// realloc settings whether already loaded or not
-	settings = make(map[string]any)
+	var new_settings Settings
 
 	config_file_path, err := GetOrInitConfig()
 	if err != nil {
@@ -31,39 +39,39 @@ func LoadSettings() error {
 		return err
 	}
 
-	err = json.Unmarshal(content, settings)
+	err = json.Unmarshal(content, &new_settings)
 	if err != nil {
 		return err
 	}
 
 	is_settings_loaded = true
+	settings = new_settings
 	return nil
 }
 
-// GetSettings will return the map of settings from the parsed config json.
+// GetSettings will return a copy of the settings from the parsed config json.
 // If the settings were never read from the config json, this will read it using [LoadSettings].
-func GetSettings() (map[string]any, error) {
-	var copy map[string]any
-
+func GetSettings() (Settings, error) {
 	if !is_settings_loaded {
 		err := LoadSettings()
 		if err != nil {
-			return copy, err
+			return Settings{}, err
 		}
 	}
 
-	maps.Copy(copy, settings)
-
-	return copy, nil
+	return settings, nil
 }
 
-func SaveSettings(new_settings map[string]any) error {
+func SaveSettings(new_settings Settings) error {
 	config_file_path, err := GetOrInitConfig()
 	if err != nil {
 		return err
 	}
 
 	json_bytes, err := json.Marshal(new_settings)
+	if err != nil {
+		return err
+	}
 
 	err = os.WriteFile(config_file_path, json_bytes, 0666)
 	if err != nil {
@@ -71,6 +79,7 @@ func SaveSettings(new_settings map[string]any) error {
 	}
 
 	settings = new_settings // only replace if settings was successfully written, else keep the old value
+	is_settings_loaded = true
 	return nil
 }
 
