@@ -5,17 +5,39 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 
 	"github.com/t3snake/gocode/src/chatcompletion"
 	"github.com/t3snake/gocode/src/core"
 	"github.com/t3snake/gocode/src/logger"
+	"github.com/t3snake/gocode/src/openaisiwc"
 	"github.com/t3snake/gocode/src/tui"
 )
 
 func main() {
 	var prompt string
+	var login bool
 	flag.StringVar(&prompt, "p", "", "Prompt to send to LLM in CLI mode")
+	flag.BoolVar(&login, "login", false, "Sign in with ChatGPT (no inference)")
 	flag.Parse()
+	if login {
+		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+		defer cancel()
+		if err := openaisiwc.LoginChatGPT(ctx, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "Sign-in failed: %v\n", err)
+			os.Exit(1)
+		}
+		settings, err := core.GetSettings()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Read saved sign-in: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("ChatGPT sign-in saved.")
+		if !openaisiwc.PlanUsageEnabled(settings.Scope) {
+			fmt.Println("ChatGPT plan usage was not granted.")
+		}
+		return
+	}
 
 	// check if flag is found, ie. if run in CLI mode
 	p_flag_found := false

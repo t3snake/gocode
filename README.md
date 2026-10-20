@@ -35,6 +35,26 @@ OR
 - Use commandline argument `-p "<your prompt>"` to run agent loop for your prompt.
 - Use without params to use the TUI
 
+## Sign in with ChatGPT
+
+Run `go run ./src -login`, then open the underlined **Continue with ChatGPT**
+link to sign in. The link uses OSC 8, with explicit underline and color.
+In Ghostty on macOS, use Cmd+click. If your terminal does not support clickable
+links, copy the URL printed below it into your browser on the same computer. Sign-in
+waits up to five minutes; use Ctrl+C to cancel. Keep the URL private because a
+returning sign-in can include the saved ID token.
+
+This saves one account's issued client ID, verified identity, tokens, granted scopes, and expiry
+in `gocode/settings.json` under the OS user config directory. On Unix, the file
+has owner-only permissions. Keep this file private: it contains credentials.
+
+Run the same command to sign in again with the saved registration and host ID.
+If token exchange or verification fails after registration, its issued client ID
+is saved as pending and reused on retry. Credentials become active only after
+verification succeeds.
+The command stops after sign-in. It does not change the current Chat Completions
+client or call the Responses API. Token refresh and inference are not wired yet.
+
 
 ## Jev API
 

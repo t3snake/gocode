@@ -3,15 +3,23 @@ package core
 import (
 	"encoding/json/v2"
 	"errors"
-	"fmt"
 	"os"
+	"path/filepath"
+	"time"
 )
 
 // Settings holds the values stored in the config file.
 type Settings struct {
-	OpenAIClientID string `json:"openai-client-id,omitempty"`
-	IDTokenHint    string `json:"id-token-hint,omitempty"`
-	HostID         string `json:"host-id,omitempty"`
+	OpenAIClientID        string    `json:"openai-client-id,omitempty"`
+	IDTokenHint           string    `json:"id-token-hint,omitempty"`
+	PendingOpenAIClientID string    `json:"pending-openai-client-id,omitempty"`
+	HostID                string    `json:"host-id,omitempty"`
+	Subject               string    `json:"subject,omitempty"`
+	Email                 string    `json:"email,omitempty"`
+	AccessToken           string    `json:"access-token,omitempty"`
+	RefreshToken          string    `json:"refresh-token,omitempty"`
+	Scope                 string    `json:"scope,omitempty"`
+	ExpiresAt             time.Time `json:"expires-at,omitzero"`
 }
 
 // Globals
@@ -23,7 +31,7 @@ var is_settings_loaded bool = false
 var settings Settings
 
 // LoadSettings will read the config json and load the settings. Also see [GetSettings].
-// If error happened, the settings are not loaded and default values must be used.
+// A missing file loads empty settings. Other errors keep the previous settings.
 //
 // This function does not create a "settings.json" if the file is not present. That is done in [SaveSettings]
 func LoadSettings() error {
@@ -35,13 +43,14 @@ func LoadSettings() error {
 	}
 
 	content, err := os.ReadFile(config_file_path)
-	if err != nil {
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 
-	err = json.Unmarshal(content, &new_settings)
-	if err != nil {
-		return err
+	if err == nil {
+		if err := json.Unmarshal(content, &new_settings); err != nil {
+			return err
+		}
 	}
 
 	is_settings_loaded = true
@@ -73,8 +82,20 @@ func SaveSettings(new_settings Settings) error {
 		return err
 	}
 
-	err = os.WriteFile(config_file_path, json_bytes, 0666)
+	temp_file, err := os.CreateTemp(filepath.Dir(config_file_path), ".settings-*")
 	if err != nil {
+		return err
+	}
+	defer os.Remove(temp_file.Name())
+	_, write_err := temp_file.Write(json_bytes)
+	close_err := temp_file.Close()
+	if write_err != nil {
+		return write_err
+	}
+	if close_err != nil {
+		return close_err
+	}
+	if err := os.Rename(temp_file.Name(), config_file_path); err != nil {
 		return err
 	}
 
@@ -92,19 +113,10 @@ func GetOrInitConfig() (string, error) {
 		return "", err
 	}
 
-	gc_conf_dir := fmt.Sprintf("%s/%s", usr_conf_dir, "gocode")
-
-	_, err = os.Stat(gc_conf_dir)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			err2 := os.Mkdir(gc_conf_dir, 0700)
-			if err2 != nil {
-				return "", err2
-			}
-		} else {
-			return "", err
-		}
+	gc_conf_dir := filepath.Join(usr_conf_dir, "gocode")
+	if err := os.MkdirAll(gc_conf_dir, 0700); err != nil {
+		return "", err
 	}
 
-	return fmt.Sprintf("%s/%s", gc_conf_dir, "settings.json"), nil
+	return filepath.Join(gc_conf_dir, "settings.json"), nil
 }

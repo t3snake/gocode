@@ -20,5 +20,7 @@ const JevEndpoint = "https://api.typesafe.ai/v1/systemone"
 const LocalLlmEndpoint = "http://localhost:3434/v1"
 
 const OpenAiSiwcAuthEndpoint = "https://auth.openai.com/api/accounts/authorize"
+const OpenAiSiwcTokenEndpoint = "https://auth.openai.com/api/accounts/oauth/token"
+const OpenAiSiwcJwksEndpoint = "https://auth.openai.com/.well-known/jwks.json"
 
 const ModelName = "Qwen3.6-35B-A3B-UD-IQ4_XS.gguf"

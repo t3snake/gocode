@@ -6,9 +6,12 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/t3snake/gocode/src/logger"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -19,6 +22,7 @@ func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) 
 
 func testClient(t *testing.T, transport roundTripFunc) *Client {
 	t.Helper()
+	logger.Init(os.Stderr)
 	t.Setenv("TYPESAFE_API_KEY", "test-key")
 	client, err := NewClient()
 	if err != nil {
