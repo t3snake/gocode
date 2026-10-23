@@ -7,8 +7,8 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/t3snake/gocode/src/chatcompletion"
 	"github.com/t3snake/gocode/src/core"
+	"github.com/t3snake/gocode/src/llmapi"
 	"github.com/t3snake/gocode/src/logger"
 	"github.com/t3snake/gocode/src/openaisiwc"
 	"github.com/t3snake/gocode/src/tui"
@@ -61,14 +61,14 @@ func main() {
 			panic("Prompt must not be empty")
 		}
 
-		client := chatcompletion.GetClient()
+		client := llmapi.GetClient()
 
 		logger.Info("gocode started in prompt mode.")
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		agent_loop_params := chatcompletion.AgentLoopParams{
+		agent_loop_params := llmapi.AgentLoopParams{
 			Client:     client,
 			Ctx:        ctx,
 			UserPrompt: prompt,
@@ -80,7 +80,7 @@ func main() {
 			TuiToLlm: nil,
 		}
 
-		result := chatcompletion.RunAgentLoop(agent_loop_params)
+		result := llmapi.RunAgentLoop(agent_loop_params)
 
 		os.Exit(result.Retcode)
 	}

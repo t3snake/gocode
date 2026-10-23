@@ -8,8 +8,8 @@ import (
 
 	"github.com/openai/openai-go/v3"
 
-	"github.com/t3snake/gocode/src/chatcompletion"
 	"github.com/t3snake/gocode/src/core"
+	"github.com/t3snake/gocode/src/llmapi"
 )
 
 // ----- Bridge between TUI and calls to LLM -----
@@ -41,9 +41,9 @@ func promptLlm(
 		var display_out strings.Builder
 		var display_err strings.Builder
 
-		client := chatcompletion.GetClient()
+		client := llmapi.GetClient()
 
-		agent_loop_params := chatcompletion.AgentLoopParams{
+		agent_loop_params := llmapi.AgentLoopParams{
 			Client:     client,
 			Ctx:        ctx,
 			UserPrompt: prompt,
@@ -56,7 +56,7 @@ func promptLlm(
 			TuiToLlm: tui2llm,
 		}
 
-		result := chatcompletion.RunAgentLoop(agent_loop_params)
+		result := llmapi.RunAgentLoop(agent_loop_params)
 
 		return ChatResult{
 			prev_messages: result.Messages,

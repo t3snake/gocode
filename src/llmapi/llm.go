@@ -1,4 +1,4 @@
-package chatcompletion
+package llmapi
 
 import (
 	// openai api to communicate with LLM
