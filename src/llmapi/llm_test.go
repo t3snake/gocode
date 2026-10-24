@@ -30,7 +30,7 @@ func TestCreatePromptMessages(t *testing.T) {
 		build func(string) openai.ChatCompletionMessageParamUnion
 	}{
 		{"user", createUserMessage},
-		{"developer", createDeveloperMessage},
+		{"developer", createSystemMessage},
 	}
 	inputs := []struct {
 		name string

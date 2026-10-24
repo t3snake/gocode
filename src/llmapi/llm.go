@@ -44,7 +44,7 @@ func RunAgentLoop(params AgentLoopParams) (result AgentLoopResult) {
 	i := 0
 	if len(params.Messages) == 0 {
 		is_new_session = true
-		messages[0] = createDeveloperMessage(getSystemPrompt())
+		messages[0] = createSystemMessage(getSystemPrompt())
 		i++
 	} else {
 		for ; i < len(params.Messages); i++ {
@@ -355,10 +355,10 @@ func createUserMessage(prompt string) openai.ChatCompletionMessageParamUnion {
 }
 
 // Creates a ChatCompletion message with role "developer" and prompt as content
-func createDeveloperMessage(prompt string) openai.ChatCompletionMessageParamUnion {
+func createSystemMessage(prompt string) openai.ChatCompletionMessageParamUnion {
 	return openai.ChatCompletionMessageParamUnion{
-		OfDeveloper: &openai.ChatCompletionDeveloperMessageParam{
-			Content: openai.ChatCompletionDeveloperMessageParamContentUnion{
+		OfSystem: &openai.ChatCompletionSystemMessageParam{
+			Content: openai.ChatCompletionSystemMessageParamContentUnion{
 				OfString: openai.String(prompt),
 			},
 		},
